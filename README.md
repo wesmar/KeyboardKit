@@ -40,7 +40,7 @@ Overall Status: FULLY OPERATIONAL
 ## Project Overview
 
 ### Introduction
-This comprehensive educational project represents one of the first fully functional keyboard filter drivers developed in over 10 years that successfully combines kernel-mode interception, network communication, sophisticated privilege escalation, and persistent installation mechanisms. The project serves as a practical reference for understanding modern Windows protection mechanisms and kernel programming techniques.
+This comprehensive educational project represents one of the few fully functional IRP-based keyboard filter drivers developed in recent years, specifically compiled and tested for Windows 11 25H2 that successfully combines kernel-mode interception, network communication, sophisticated privilege escalation, and persistent installation mechanisms. The project serves as a practical reference for understanding modern Windows protection mechanisms and kernel programming techniques.
 
 ### Educational Purpose
 This system is designed for:
@@ -125,41 +125,41 @@ The three components operate independently yet cooperatively:
 ```
 [User Executes: UdpLogger install]
            ↓
-    ┌────────────────────────────────┐
+    ┌──────────────────────────────────┐
     │ Resource Extraction Phase        │
     │  • XOR-decrypt embedded binaries │
     │  • Parse TLV payload structure   │
     │  • Validate PE signatures        │
-    └────────────────────────────────┘
+    └──────────────────────────────────┘
            ↓
-    ┌────────────────────────────────┐
+    ┌──────────────────────────────────┐
     │ Privilege Escalation Phase       │
     │  • Acquire SYSTEM token          │
     │  • Start TrustedInstaller        │
     │  • Duplicate TI token            │
     │  • Enable all privileges         │
-    └────────────────────────────────┘
+    └──────────────────────────────────┘
            ↓
-    ┌────────────────────────────────┐
+    ┌──────────────────────────────────┐
     │ File Deployment Phase            │
     │  • Write to System32             │
     │  • Write to DriverStore          │
     │  • Set file timestamps           │
-    └────────────────────────────────┘
+    └──────────────────────────────────┘
            ↓
-    ┌────────────────────────────────┐
+    ┌──────────────────────────────────┐
     │ Registry Configuration Phase     │
     │  • CLSID hijack registration     │
     │  • BCD test signing enable       │
     │  • Driver service creation       │
-    └────────────────────────────────┘
+    └──────────────────────────────────┘
            ↓
-    ┌────────────────────────────────┐
+    ┌──────────────────────────────────┐
     │ Service Installation Phase       │
     │  • Create Windows service        │
     │  • Configure auto-start          │
     │  • Start service immediately     │
-    └────────────────────────────────┘
+    └──────────────────────────────────┘
            ↓
     [System Reboot Required]
            ↓
@@ -178,7 +178,7 @@ The kernel driver is the cornerstone of this system, operating at Ring 0 with fu
 **Filter Driver Philosophy:**
 Rather than implementing a complete keyboard driver stack, kvckbd.sys adopts the filter driver pattern. It positions itself between user-mode applications and the legitimate Windows keyboard driver, allowing it to observe and process all keyboard input without replacing core system functionality.
 
-**Key Innovation - First Working Implementation in 10+ Years:**
+**Key Innovation - Modern IRP-Based Implementation – Tested on Windows 11 25H2:**
 This driver represents a rare working implementation of IRP-based keyboard filtering. Most modern attempts fail due to:
 
 - Incorrect offset calculations for DeviceExtension structures
@@ -375,7 +375,7 @@ The DLL is built with aggressive size optimization:
 - Custom new/delete operators
 
 **Binary Size:**
-Through these optimizations, the compiled DLL is extremely small (~20-30 KB), making it less suspicious and easier to hide.
+Through these optimizations, the compiled DLL is extremely small (~7 KB), making it less suspicious and easier to hide.
 
 **Function Forwarding:**
 The DLL exports two functions that forward to the legitimate explorerframe.dll:
@@ -601,13 +601,13 @@ At midnight, the logger:
 ###                                                                          ###
 ###              UDP KEYBOARD LOGGER - KERNEL/USER-MODE BRIDGE               ###
 ###                                                                          ###
-###  System: kvckbd.sys driver + ExplorerFrame.dll + UDP service (31415)    ###
-###  Deployment: TrustedInstaller token escalation, BCD test signing,       ###
-###              DriverStore integration, and CLSID hijacking for           ###
-###              persistence.                                               ###
+###  System: kvckbd.sys driver + ExplorerFrame.dll + UDP service (31415)     ###
+###  Deployment: TrustedInstaller token escalation, BCD test signing,        ###
+###              DriverStore integration, and CLSID hijacking for            ###
+###              persistence.                                                ###
 ###                                                                          ###
-###  Author: Marek Wesolowski | marek@wesolowski.eu.org | +48 607 440 283   ###
-###  Project: https://github.com/wesmar/udp-keyboard-logger                 ###
+###  Author: Marek Wesolowski | marek@wesolowski.eu.org | +48 607 440 283    ###
+###  Project: https://github.com/wesmar/udp-keyboard-logger                  ###
 ###                                                                          ###
 ################################################################################
 
@@ -632,6 +632,11 @@ Session ended: 2025-10-10 18:30:45
 Total duration: 4 hours 7 minutes 30 seconds
 ===============================================================================
 ```
+
+![Keyboard Log Example](images/UdpLogger-02.jpg)
+
+**Log Rotation:**
+New file created automatically at midnight...
 
 ### System Status Monitoring
 
@@ -711,6 +716,7 @@ Boot Configuration Data (BCD) is a firmware-independent database introduced in W
 - Test signing configuration
 
 **Storage Location:**
+![BCD Registry Structure](images/UdpLogger-03.jpg)
 The BCD is stored as a registry hive at:
 ```
 %SystemRoot%\Boot\BCD
@@ -809,7 +815,7 @@ Windows enforces Driver Signature Enforcement (DSE) on x64 systems:
 - Test signing mode allows test certificates (for development)
 
 **Our Driver's Signature:**
-kvckbd.sys is likely signed with a test certificate, requiring test mode enabled.
+kvckbd.sys is signed with a test certificate (WDKTestCert Administrator, thumbprint: 134041667787870176), requiring test mode enabled.
 
 ### Registry Manipulation Technique
 
@@ -1022,7 +1028,7 @@ SC_HANDLE hService = CreateServiceW(
 This fails because:
 
 - CreateServiceW writes to protected registry keys
-- Administrator privileges cannot write to SYSTEM\CurrentControlSet\Services
+- Administrator privileges cannot modify protected registry keys like CLSID entries in HKCR, which require TrustedInstaller-level access, (maybe write to SYSTEM\CurrentControlSet\Services, but I find it more convenient to use TrustedInstaller everywhere)
 - TrustedInstaller ownership required
 
 **Our Approach - Direct Registry:**
@@ -1213,6 +1219,8 @@ UdpLogger.exe status
 
 Overall Status: FULLY OPERATIONAL
 ```
+
+![UdpLogger Status Command](images/UdpLogger-01.jpg)
 
 **Individual Component Checks:**
 

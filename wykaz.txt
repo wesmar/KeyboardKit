@@ -1,0 +1,127 @@
+ Volume in drive C is SYSTEM
+ Volume Serial Number is 0000-0002
+
+ Directory of C:\Projekty\github\KeyboardKit
+
+10/10/2025  03:19 PM    <DIR>          .
+10/10/2025  03:03 PM    <DIR>          ..
+10/10/2025  01:55 PM    <DIR>          data
+10/10/2025  11:38 AM    <DIR>          Explorerframe
+09/30/2025  03:39 PM             1,849 git-push.sh
+10/10/2025  01:26 PM    <DIR>          images
+10/10/2025  11:36 AM             1,518 KeyboardKit.sln
+10/10/2025  11:38 AM    <DIR>          kvckbd
+10/10/2025  01:39 PM            19,782 LICENSE.md
+09/23/2025  01:49 AM               463 pack-data.sh
+10/10/2025  03:03 PM            54,899 README.md
+10/10/2025  11:38 AM    <DIR>          UdpLogger
+10/10/2025  03:19 PM                 0 wykaz.txt
+               6 File(s)         78,511 bytes
+
+ Directory of C:\Projekty\github\KeyboardKit\data
+
+10/10/2025  01:55 PM    <DIR>          .
+10/10/2025  03:19 PM    <DIR>          ..
+10/10/2025  01:56 PM    <DIR>          Embedded in the Binary
+10/10/2025  02:34 PM            12,125 README.txt
+01/01/2026  01:00 AM           192,000 UdpLogger.exe
+               2 File(s)        204,125 bytes
+
+ Directory of C:\Projekty\github\KeyboardKit\data\Embedded in the Binary
+
+10/10/2025  01:56 PM    <DIR>          .
+10/10/2025  01:55 PM    <DIR>          ..
+01/01/2026  01:00 AM             7,168 ExpIorerFrame.dll
+01/01/2026  01:00 AM             2,571 kvckbd.cat
+01/01/2026  01:00 AM             1,659 kvckbd.inf
+01/01/2026  01:00 AM            29,120 kvckbd.sys
+               4 File(s)         40,518 bytes
+
+ Directory of C:\Projekty\github\KeyboardKit\Explorerframe
+
+10/10/2025  11:38 AM    <DIR>          .
+10/10/2025  03:19 PM    <DIR>          ..
+10/08/2025  10:37 PM             8,701 Explorerframe.cpp
+10/08/2025  10:17 PM             1,184 Explorerframe.h
+10/08/2025  10:39 PM             3,709 Explorerframe.vcxproj
+10/08/2025  10:14 PM             1,267 Explorerframe.vcxproj.filters
+10/08/2025  10:14 PM               165 Explorerframe.vcxproj.user
+10/08/2025  10:20 PM               344 resource.h
+10/08/2025  09:49 PM             4,254 version.rc
+               7 File(s)         19,624 bytes
+
+ Directory of C:\Projekty\github\KeyboardKit\images
+
+10/10/2025  01:26 PM    <DIR>          .
+10/10/2025  03:19 PM    <DIR>          ..
+10/10/2025  11:01 AM            39,542 UdpLogger-01.jpg
+10/10/2025  11:16 AM           293,443 UdpLogger-02.jpg
+10/10/2025  01:26 PM           292,930 UdpLogger-03.jpg
+               3 File(s)        625,915 bytes
+
+ Directory of C:\Projekty\github\KeyboardKit\kvckbd
+
+10/10/2025  11:38 AM    <DIR>          .
+10/10/2025  03:19 PM    <DIR>          ..
+10/07/2025  07:34 PM            34,818 driver.c
+10/09/2025  10:13 AM             3,457 driver.h
+10/06/2025  07:58 PM             1,697 kvckbd.inf
+10/06/2025  08:44 PM             1,978 kvckbd.rc
+10/09/2025  09:23 AM             5,820 kvckbd.vcxproj
+10/09/2025  10:07 AM             1,881 kvckbd.vcxproj.filters
+10/06/2025  08:12 PM               168 kvckbd.vcxproj.user
+10/10/2025  11:28 AM    <DIR>          network
+10/07/2025  09:21 AM             7,242 network.c
+10/07/2025  09:21 AM             8,281 network.h
+10/09/2025  09:54 AM            12,076 scancode.c
+10/09/2025  09:55 AM               639 scancode.h
+              11 File(s)         78,057 bytes
+
+ Directory of C:\Projekty\github\KeyboardKit\kvckbd\network
+
+10/10/2025  11:28 AM    <DIR>          .
+10/10/2025  11:38 AM    <DIR>          ..
+10/07/2025  03:27 PM           251,952 network.lib
+               1 File(s)        251,952 bytes
+
+ Directory of C:\Projekty\github\KeyboardKit\UdpLogger
+
+10/10/2025  11:38 AM    <DIR>          .
+10/10/2025  03:19 PM    <DIR>          ..
+10/08/2025  11:56 AM               673 Config.h
+10/10/2025  08:19 AM               517 DebugConfig.h
+10/09/2025  10:04 PM            20,115 DriverInstaller.cpp
+10/10/2025  09:59 AM               978 DriverInstaller.h
+10/10/2025  08:33 AM             9,763 FileLogger.cpp
+10/07/2025  09:27 PM               872 FileLogger.h
+10/10/2025  11:29 AM    <DIR>          ICON
+10/08/2025  11:51 AM             3,302 PathHelper.cpp
+10/08/2025  12:16 PM               759 PathHelper.h
+10/09/2025  01:08 PM               485 Resource.h
+10/09/2025  09:39 PM             3,417 ResourceExtractor.cpp
+10/09/2025  09:40 PM               736 ResourceExtractor.h
+10/10/2025  10:10 AM             4,379 SystemStatus.cpp
+10/10/2025  10:06 AM               578 SystemStatus.h
+10/09/2025  07:25 PM            35,361 TrustedInstallerExecutor.cpp
+10/09/2025  07:19 PM             7,153 TrustedInstallerExecutor.h
+10/08/2025  02:34 PM             5,259 UdpListener.cpp
+10/08/2025  12:14 PM               809 UdpListener.h
+10/10/2025  10:12 AM            19,185 UdpLogger.cpp
+10/09/2025  01:21 PM             4,750 UdpLogger.rc
+10/10/2025  09:38 AM             6,513 UdpLogger.vcxproj
+10/10/2025  09:40 AM             3,159 UdpLogger.vcxproj.filters
+10/06/2025  11:22 PM               168 UdpLogger.vcxproj.user
+10/10/2025  10:01 AM            19,142 UdpServiceManager.cpp
+10/10/2025  09:59 AM             2,295 UdpServiceManager.h
+              24 File(s)        150,368 bytes
+
+ Directory of C:\Projekty\github\KeyboardKit\UdpLogger\ICON
+
+10/10/2025  11:29 AM    <DIR>          .
+10/10/2025  11:38 AM    <DIR>          ..
+10/09/2025  09:36 PM            45,997 kvc.ico
+               1 File(s)         45,997 bytes
+
+     Total Files Listed:
+              59 File(s)      1,495,067 bytes
+              26 Dir(s)  1,088,159,547,392 bytes free

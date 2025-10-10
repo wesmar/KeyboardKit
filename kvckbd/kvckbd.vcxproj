@@ -1,0 +1,105 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{5FE21A14-07A7-A05B-498A-6201D58BE337}</ProjectGuid>
+    <TemplateGuid>{1bc93793-694f-48fe-9372-81e2b05556fd}</TemplateGuid>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <MinimumVisualStudioVersion>12.0</MinimumVisualStudioVersion>
+    <Configuration>Debug</Configuration>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <RootNamespace>kvckbd</RootNamespace>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>KMDF</DriverType>
+    <DriverTargetPlatform>Universal</DriverTargetPlatform>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+    <IncludePath>$(IncludePath);$(WDKContentRoot)Include\$(TargetOS)\km;$(WDKContentRoot)Include\shared;$(WindowsSdkDir)Include\$(WindowsTargetPlatformVersion)\um;$(WindowsSdkDir)Include\$(WindowsTargetPlatformVersion)\shared</IncludePath>
+    <LibraryPath>$(LibraryPath);$(WDKContentRoot)lib\$(TargetOS)\km\$(TargetArch)</LibraryPath>
+    <IntDir>x64\Release\obj\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <DriverSign>
+      <FileDigestAlgorithm>sha256</FileDigestAlgorithm>
+    </DriverSign>
+    <Link>
+      <AdditionalDependencies>network\network.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <TreatLinkerWarningAsErrors>false</TreatLinkerWarningAsErrors>
+    </Link>
+    <ClCompile>
+      <DebugInformationFormat>None</DebugInformationFormat>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <Inf Include="kvckbd.inf" />
+  </ItemGroup>
+  <ItemGroup>
+    <FilesToPackage Include="$(TargetPath)" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="scancode.c" />
+    <ClCompile Include="driver.c" />
+    <ClCompile Include="network.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="driver.h" />
+    <ClInclude Include="scancode.h" />
+    <ClInclude Include="network.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="kvckbd.rc" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+  <!-- CZYSZCZENIE DOPIERO PO PEŁNEJ KOMPILACJI -->
+  <Target Name="FinalCleanup" AfterTargets="Build">
+    <PropertyGroup>
+      <ReleaseDir>$(ProjectDir)x64\Release</ReleaseDir>
+    </PropertyGroup>
+    <Message Text="=== FINAL CLEANUP STARTED ===" Importance="high" />
+    <!-- Poczekaj aż wszystkie pliki będą gotowe -->
+    <Exec Command="ping -n 3 127.0.0.1 &gt; nul" IgnoreExitCode="true" />
+    <!-- Usuń tylko śmieci z głównego folderu Release -->
+    <ItemGroup>
+      <JunkFiles Include="$(ReleaseDir)\*.sys" />
+      <JunkFiles Include="$(ReleaseDir)\*.inf" />
+      <JunkFiles Include="$(ReleaseDir)\*.cat" />
+      <JunkFiles Include="$(ReleaseDir)\*.cer" />
+      <JunkFiles Include="$(ReleaseDir)\*.pdb" />
+      <JunkFiles Include="$(ReleaseDir)\*.log" />
+    </ItemGroup>
+    <Delete Files="@(JunkFiles)" ContinueOnError="true" />
+    <!-- Opóźnione usunięcie folderu obj -->
+    <Exec Command="ping -n 4 127.0.0.1 &gt; nul &amp; rd /S /Q &quot;$(ReleaseDir)\obj&quot; 2&gt;nul" IgnoreExitCode="true" />
+    <!-- Ustaw datę TYLKO na finalnych plikach w folderze kvckbd -->
+    <Exec Command="powershell -Command &quot;if (Test-Path '$(ReleaseDir)\kvckbd\kvckbd.sys') { (Get-Item '$(ReleaseDir)\kvckbd\kvckbd.sys').CreationTime='2026-01-01 00:00:00'; (Get-Item '$(ReleaseDir)\kvckbd\kvckbd.sys').LastWriteTime='2026-01-01 00:00:00' }&quot;" IgnoreExitCode="true" />
+    <Exec Command="powershell -Command &quot;if (Test-Path '$(ReleaseDir)\kvckbd\kvckbd.inf') { (Get-Item '$(ReleaseDir)\kvckbd\kvckbd.inf').CreationTime='2026-01-01 00:00:00'; (Get-Item '$(ReleaseDir)\kvckbd\kvckbd.inf').LastWriteTime='2026-01-01 00:00:00' }&quot;" IgnoreExitCode="true" />
+    <Exec Command="powershell -Command &quot;if (Test-Path '$(ReleaseDir)\kvckbd\kvckbd.cat') { (Get-Item '$(ReleaseDir)\kvckbd\kvckbd.cat').CreationTime='2026-01-01 00:00:00'; (Get-Item '$(ReleaseDir)\kvckbd\kvckbd.cat').LastWriteTime='2026-01-01 00:00:00' }&quot;" IgnoreExitCode="true" />
+    <Message Text="=== FINAL CLEANUP COMPLETED ===" Importance="high" />
+    <Message Text="Final files in $(ReleaseDir)\kvckbd\:" Importance="high" />
+    <Exec Command="dir &quot;$(ReleaseDir)\kvckbd&quot;" IgnoreExitCode="true" />
+  </Target>
+</Project>

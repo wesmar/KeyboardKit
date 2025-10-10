@@ -60,7 +60,7 @@ static const UCHAR g_ShiftDigits[10][2] = {
 // Shift mappings for special characters
 //
 static const UCHAR g_ShiftChars[][2] = {
-    "{", "}", "|", ":", "\"", "~", "<", ">", "?"
+    "+", "{", "}", "|", ":", "\"", "~", "<", ">", "?"
 };
 
 //
@@ -139,15 +139,16 @@ static VOID ToUpperCase(UCHAR* dest, const UCHAR* src)
 static PCUCHAR GetShiftedChar(UCHAR makeCode)
 {
     switch (makeCode) {
-        case 0x1A: return g_ShiftChars[0]; // [ -> {
-        case 0x1B: return g_ShiftChars[1]; // ] -> }
-        case 0x2B: return g_ShiftChars[2]; // \ -> |
-        case 0x27: return g_ShiftChars[3]; // ; -> :
-        case 0x28: return g_ShiftChars[4]; // ' -> "
-        case 0x29: return g_ShiftChars[5]; // ` -> ~
-        case 0x33: return g_ShiftChars[6]; // , -> 
-        case 0x34: return g_ShiftChars[7]; // . -> >
-        case 0x35: return g_ShiftChars[8]; // / -> ?
+        case 0x0D: return g_ShiftChars[0];  // = -> +
+        case 0x1A: return g_ShiftChars[1]; // [ -> {
+        case 0x1B: return g_ShiftChars[2]; // ] -> }
+        case 0x2B: return g_ShiftChars[3]; // \ -> |
+        case 0x27: return g_ShiftChars[4]; // ; -> :
+        case 0x28: return g_ShiftChars[5]; // ' -> "
+        case 0x29: return g_ShiftChars[6]; // ` -> ~
+        case 0x33: return g_ShiftChars[7]; // , -> <
+        case 0x34: return g_ShiftChars[8]; // . -> >
+        case 0x35: return g_ShiftChars[9]; // / -> ?
         default: return NULL;
     }
 }

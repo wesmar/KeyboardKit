@@ -1,4 +1,7 @@
-// ExplorerFrame Proxy Header
+// Windows Explorer Watermark Suppression Module
+// Modern C++20 implementation with minimal runtime dependencies
+
+#pragma once
 
 #include <Windows.h>
 #include <delayimp.h>
@@ -6,28 +9,82 @@
 #include <ShlObj.h>
 #include <Shlwapi.h>
 
-// Minimal CRT functions
-void* min_malloc(size_t size);
-void* min_calloc(size_t count, size_t size);
-void min_free(void* ptr);
-void* min_realloc(void* ptr, size_t size);
-void* min_recalloc(void* ptr, size_t size);
-void* min_memcpy(void* dst, const void* src, size_t n);
-void* min_memset(void* dst, int c, size_t n);
-int min_memcmp(const void* s1, const void* s2, size_t n);
+// ============================================================================
+// Minimal Runtime Library (CRT-free implementation)
+// ============================================================================
 
-// Import patcher
-class ImportPatch {
+[[nodiscard]] void* HeapAllocate(size_t size) noexcept;
+[[nodiscard]] void* HeapAllocateZero(size_t count, size_t size) noexcept;
+void HeapDeallocate(void* ptr) noexcept;
+[[nodiscard]] void* HeapReallocate(void* ptr, size_t size) noexcept;
+[[nodiscard]] void* HeapReallocateZero(void* ptr, size_t size) noexcept;
+[[nodiscard]] void* MemoryCopy(void* dst, const void* src, size_t n) noexcept;
+[[nodiscard]] void* MemorySet(void* dst, int c, size_t n) noexcept;
+[[nodiscard]] int MemoryCompare(const void* s1, const void* s2, size_t n) noexcept;
+			  wchar_t* StringCopySafe(wchar_t* dest, size_t destSize, const wchar_t* src) noexcept;
+
+// ============================================================================
+// Import Address Table Patching
+// ============================================================================
+
+class ImportAddressTablePatcher final {
 public:
-    static BOOL WINAPI ChangeImportedAddress(HMODULE hModule, LPCSTR modulename, FARPROC origfunc, FARPROC newfunc);
+    ImportAddressTablePatcher() = delete;
+    
+    [[nodiscard]] static bool ReplaceImportedFunction(
+        HMODULE targetModule,
+        const char* importModuleName,
+        FARPROC originalFunction,
+        FARPROC replacementFunction
+    ) noexcept;
+
+private:
+    [[nodiscard]] static PIMAGE_IMPORT_DESCRIPTOR GetImportDescriptor(
+        HMODULE module,
+        const char* moduleName
+    ) noexcept;
+    
+    [[nodiscard]] static DWORD_PTR* LocateFunctionInThunk(
+        DWORD_PTR moduleBase,
+        PIMAGE_IMPORT_DESCRIPTOR importDesc,
+        FARPROC targetFunction
+    ) noexcept;
 };
 
-// Watermark detection
-bool IsWatermarkText(LPCTSTR lptApiText);
+// ============================================================================
+// Watermark Detection
+// ============================================================================
 
-// Proxy functions
-INT WINAPI Proxy_LoadString(_In_opt_ HINSTANCE hInstance, _In_ UINT uID, _Out_ LPTSTR lpBuffer, _In_ int nBufferMax);
-BOOL WINAPI Proxy_ExtTextOut(_In_ HDC hdc, _In_ int X, _In_ int Y, _In_ UINT fuOptions, _In_ const RECT* lprc, _In_ LPCTSTR lpString, _In_ UINT cbCount, _In_ const INT* lpDx);
+[[nodiscard]] bool ContainsBrandingWatermark(const wchar_t* text) noexcept;
 
-// DllMain
-BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved);
+// ============================================================================
+// Intercepted Windows API Functions
+// ============================================================================
+
+INT WINAPI InterceptedLoadStringW(
+    _In_opt_ HINSTANCE hInstance,
+    _In_ UINT resourceId,
+    _Out_ LPWSTR buffer,
+    _In_ int bufferMax
+) noexcept;
+
+BOOL WINAPI InterceptedExtTextOutW(
+    _In_ HDC deviceContext,
+    _In_ int x,
+    _In_ int y,
+    _In_ UINT options,
+    _In_opt_ const RECT* clipRect,
+    _In_reads_opt_(count) LPCWSTR text,
+    _In_ UINT count,
+    _In_reads_opt_(count) const INT* spacing
+) noexcept;
+
+// ============================================================================
+// DLL Entry Point
+// ============================================================================
+
+BOOL APIENTRY DllMain(
+    HMODULE hModule,
+    DWORD reasonForCall,
+    LPVOID lpReserved
+) noexcept;

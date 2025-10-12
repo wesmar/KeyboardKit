@@ -1,5 +1,6 @@
 // TrustedInstallerExecutor.cpp
 #include "TrustedInstallerExecutor.h"
+#include "DebugConfig.h"
 #include <filesystem>
 #include <algorithm>
 #include <iostream>
@@ -125,35 +126,35 @@ bool TrustedInstallerExecutor::RunAsTrustedInstaller(
     std::wstring_view commandLine, bool showWindow) {
     
     if (commandLine.empty()) {
-        std::wcerr << L"Error: Empty command line\n";
+        DEBUG_LOG(L"Error: Empty command line");
         return false;
     }
 
-    std::wcout << L"Attempting to run as TrustedInstaller: " << commandLine << L"\n";
+    DEBUG_LOG(L"Attempting to run as TrustedInstaller: " << commandLine);
 
     // Enable required privileges for token manipulation
     if (!EnablePrivilege(L"SeDebugPrivilege") || !EnablePrivilege(L"SeImpersonatePrivilege")) {
-        std::wcerr << L"Error: Failed to enable required privileges\n";
+        DEBUG_LOG(L"Error: Failed to enable required privileges");
         return false;
     }
 
     // Get SYSTEM token via winlogon process
     auto systemToken = GetSystemToken();
     if (!systemToken) {
-        std::wcerr << L"Error: Failed to acquire SYSTEM token\n";
+        DEBUG_LOG(L"Error: Failed to acquire SYSTEM token");
         return false;
     }
 
     // Impersonate SYSTEM to start TrustedInstaller service
     if (!ImpersonateLoggedOnUser(systemToken.get())) {
-        std::wcerr << L"Error: Failed to impersonate SYSTEM\n";
+        DEBUG_LOG(L"Error: Failed to impersonate SYSTEM");
         return false;
     }
 
     // Start TrustedInstaller service and get its token
     auto tiPid = StartTrustedInstallerService();
     if (!tiPid) {
-        std::wcerr << L"Error: Failed to start TrustedInstaller service\n";
+        DEBUG_LOG(L"Error: Failed to start TrustedInstaller service");
         RevertToSelf();
         return false;
     }
@@ -162,22 +163,22 @@ bool TrustedInstallerExecutor::RunAsTrustedInstaller(
     RevertToSelf(); // Always revert impersonation
 
     if (!tiToken) {
-        std::wcerr << L"Error: Failed to acquire TrustedInstaller token\n";
+        DEBUG_LOG(L"Error: Failed to acquire TrustedInstaller token");
         return false;
     }
 
     // Enable all privileges on the token for maximum access
     if (!EnableAllPrivileges(tiToken)) {
-        std::wcerr << L"Warning: Failed to enable some privileges on token\n";
+        DEBUG_LOG(L"Warning: Failed to enable some privileges on token");
     }
 
     // Create the process with TrustedInstaller token
     bool success = CreateProcessWithToken(tiToken, commandLine, showWindow);
     
     if (success) {
-        std::wcout << L"Successfully started process with TrustedInstaller privileges\n";
+        DEBUG_LOG(L"Successfully started process with TrustedInstaller privileges");
     } else {
-        std::wcerr << L"Error: Failed to create process with TrustedInstaller token\n";
+        DEBUG_LOG(L"Error: Failed to create process with TrustedInstaller token");
     }
 
     return success;
@@ -187,7 +188,7 @@ bool TrustedInstallerExecutor::RunAsTrustedInstaller(
     const fs::path& executablePath, std::wstring_view arguments, bool showWindow) {
     
     if (!fs::exists(executablePath)) {
-        std::wcerr << L"Error: Executable not found: " << executablePath.wstring() << L"\n";
+        DEBUG_LOG(L"Error: Executable not found: " << executablePath.wstring());
         return false;
     }
 
@@ -519,7 +520,7 @@ bool TrustedInstallerExecutor::CopyFileWithToken(const TokenHandle& token,
         } else {
             // Log error for debugging (optional)
             DWORD error = GetLastError();
-            std::wcerr << L"CopyFile failed with error: " << error << std::endl;
+            DEBUG_LOG_VERBOSE(L"CopyFile failed with error: " << error);
         }
         RevertToSelf(); // Always revert to original context
     }
@@ -574,7 +575,7 @@ bool TrustedInstallerExecutor::DeleteFileWithToken(const TokenHandle& token,
                 success = true;
             } else {
                 // Log error for debugging (optional)
-                std::wcerr << L"DeleteFile failed with error: " << error << std::endl;
+                DEBUG_LOG_VERBOSE(L"DeleteFile failed with error: " << error);
             }
         }
         RevertToSelf(); // Always revert to original context

@@ -16,7 +16,8 @@ struct ComponentStatus {
 class SystemStatus {
 public:
     static std::vector<ComponentStatus> CheckAllComponents();
-    static bool CheckDriverStatus();
+    static bool CheckSecureBoot();
+	static bool CheckDriverStatus();
     static bool CheckCLSIDHijack();
     static bool CheckTestSigning();
     static bool CheckDriverFiles();

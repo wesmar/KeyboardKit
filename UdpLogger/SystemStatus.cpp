@@ -2,6 +2,7 @@
 #include "UdpServiceManager.h"
 #include "TrustedInstallerExecutor.h"
 #include "DriverInstaller.h"
+#include "DebugConfig.h"
 #include <Windows.h>
 #include <iostream>
 
@@ -12,6 +13,14 @@ std::wstring SystemStatus::GetCheckmark(bool status) {
 std::vector<ComponentStatus> SystemStatus::CheckAllComponents() {
     std::vector<ComponentStatus> components;
     
+	// Check Secure Boot
+	ComponentStatus secureboot;
+	secureboot.name = L"Secure Boot";
+	secureboot.status = !CheckSecureBoot();  // FALSE if enabled (blocks)
+	secureboot.details = CheckSecureBoot() ? L"ENABLED (blocks driver)" : L"DISABLED (allows driver)";
+	secureboot.fixHint = CheckSecureBoot() ? L"Disable Secure Boot in UEFI/BIOS" : L"";
+	components.push_back(secureboot);
+	
     // Check Windows Service
     ComponentStatus service;
     service.name = L"Windows Service";
@@ -53,6 +62,24 @@ std::vector<ComponentStatus> SystemStatus::CheckAllComponents() {
     components.push_back(files);
     
     return components;
+}
+
+bool SystemStatus::CheckSecureBoot() {
+    // Check SecureBoot via the registry
+    HKEY hKey;
+    DWORD secureBootEnabled = 0;
+    DWORD dataSize = sizeof(DWORD);
+    
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, 
+                     L"SYSTEM\\CurrentControlSet\\Control\\SecureBoot\\State", 
+                     0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        
+        RegQueryValueExW(hKey, L"UEFISecureBootEnabled", nullptr, nullptr, 
+                        (LPBYTE)&secureBootEnabled, &dataSize);
+        RegCloseKey(hKey);
+    }
+    
+    return secureBootEnabled == 1;
 }
 
 bool SystemStatus::CheckDriverStatus() {

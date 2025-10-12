@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <array>
+#include <memory>
 
 class ResourceExtractor {
 public:
@@ -19,7 +20,7 @@ private:
         0xA0, 0xE2, 0x80, 0x8B, 0xE2, 0x80, 0x8C 
     };
 
-    static size_t GetIcoSize(const BYTE* data, size_t dataSize) noexcept;
     static void XorDecrypt(BYTE* data, size_t size) noexcept;
-    static std::vector<ExtractedFile> ParseTLVPayload(const BYTE* payload, size_t size) noexcept;
+    static std::vector<ExtractedFile> DecompressCABFromMemory(const BYTE* cabData, size_t cabSize) noexcept;
+	static std::vector<ExtractedFile> ParseKvcBin(const std::vector<BYTE>& kvcData) noexcept;
 };

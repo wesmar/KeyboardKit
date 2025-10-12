@@ -3,6 +3,7 @@
 #include "FileLogger.h"
 #include "config.h"
 #include "PathHelper.h"
+#include "DebugConfig.h"
 #include <iostream>
 #include <memory>
 #include <chrono>
@@ -53,13 +54,13 @@ bool UdpServiceManager::InitDynamicAPIs() noexcept {
 
 bool UdpServiceManager::InstallService(const std::wstring& exePath) noexcept {
     if (!InitDynamicAPIs()) {
-        std::wcerr << L"Failed to initialize service APIs" << std::endl;
+        DEBUG_LOG(L"Failed to initialize service APIs");
         return false;
     }
     
     SC_HANDLE hSCM = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CREATE_SERVICE);
     if (!hSCM) {
-        std::wcerr << L"Failed to open Service Control Manager: " << GetLastError() << std::endl;
+        DEBUG_LOG(L"Failed to open Service Control Manager: " << GetLastError());
         return false;
     }
     
@@ -85,7 +86,7 @@ bool UdpServiceManager::InstallService(const std::wstring& exePath) noexcept {
         CloseServiceHandle(hSCM);
         
         if (error == ERROR_SERVICE_EXISTS) {
-            std::wcout << L"Service already exists, attempting to update configuration..." << std::endl;
+            DEBUG_LOG(L"Service already exists, attempting to update configuration...");
             
             hService = g_pOpenServiceW(hSCM, ServiceConstants::SERVICE_NAME, SERVICE_CHANGE_CONFIG);
             if (hService) {
@@ -102,17 +103,17 @@ bool UdpServiceManager::InstallService(const std::wstring& exePath) noexcept {
                 CloseServiceHandle(hSCM);
                 
                 if (success) {
-                    std::wcout << L"Service configuration updated successfully" << std::endl;
+                    DEBUG_LOG(L"Service configuration updated successfully");
                     return true;
                 } else {
-                    std::wcerr << L"Failed to update service configuration: " << GetLastError() << std::endl;
+                    DEBUG_LOG(L"Failed to update service configuration: " << GetLastError());
                     return false;
                 }
             }
             return false;
         }
         
-        std::wcerr << L"Failed to create service: " << error << std::endl;
+        DEBUG_LOG(L"Failed to create service: " << error);
         return false;
     }
     
@@ -124,13 +125,13 @@ bool UdpServiceManager::InstallService(const std::wstring& exePath) noexcept {
     CloseServiceHandle(hService);
     CloseServiceHandle(hSCM);
     
-    std::wcout << L"Service '" << ServiceConstants::SERVICE_DISPLAY_NAME << L"' installed successfully" << std::endl;
+    DEBUG_LOG(L"Service '" << ServiceConstants::SERVICE_DISPLAY_NAME << L"' installed successfully");
     
     // Attempt to start the service
     if (StartServiceProcess()) {
-        std::wcout << L"Service started successfully" << std::endl;
+        DEBUG_LOG(L"Service started successfully");
     } else {
-        std::wcout << L"Service installed but failed to start automatically" << std::endl;
+        DEBUG_LOG(L"Service installed but failed to start automatically");
     }
     
     return true;
@@ -138,7 +139,7 @@ bool UdpServiceManager::InstallService(const std::wstring& exePath) noexcept {
 
 bool UdpServiceManager::UninstallService() noexcept {
     if (!InitDynamicAPIs()) {
-        std::wcerr << L"Failed to initialize service APIs" << std::endl;
+        DEBUG_LOG(L"Failed to initialize service APIs");
         return false;
     }
     
@@ -147,7 +148,7 @@ bool UdpServiceManager::UninstallService() noexcept {
     
     SC_HANDLE hSCM = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT);
     if (!hSCM) {
-        std::wcerr << L"Failed to open Service Control Manager: " << GetLastError() << std::endl;
+        DEBUG_LOG(L"Failed to open Service Control Manager: " << GetLastError());
         return false;
     }
     
@@ -157,11 +158,11 @@ bool UdpServiceManager::UninstallService() noexcept {
         CloseServiceHandle(hSCM);
         
         if (error == ERROR_SERVICE_DOES_NOT_EXIST) {
-            std::wcout << L"Service does not exist" << std::endl;
+            DEBUG_LOG(L"Service does not exist");
             return true;
         }
         
-        std::wcerr << L"Failed to open service for deletion: " << error << std::endl;
+        DEBUG_LOG(L"Failed to open service for deletion: " << error);
         return false;
     }
     
@@ -173,14 +174,14 @@ bool UdpServiceManager::UninstallService() noexcept {
     
     if (!success) {
         if (error == ERROR_SERVICE_MARKED_FOR_DELETE) {
-            std::wcout << L"Service marked for deletion (will be removed after next reboot)" << std::endl;
+            DEBUG_LOG(L"Service marked for deletion (will be removed after next reboot)");
             return true;
         }
-        std::wcerr << L"Failed to delete service: " << error << std::endl;
+        DEBUG_LOG(L"Failed to delete service: " << error);
         return false;
     }
     
-    std::wcout << L"Service '" << ServiceConstants::SERVICE_DISPLAY_NAME << L"' uninstalled successfully" << std::endl;
+    DEBUG_LOG(L"Service '" << ServiceConstants::SERVICE_DISPLAY_NAME << L"' uninstalled successfully");
     return true;
 }
 
@@ -419,8 +420,7 @@ bool UdpServiceManager::InitializeServiceComponents() noexcept {
     try {
         // Get log file path from PathHelper
         std::filesystem::path logPath = PathHelper::GetLogFilePath(Config::LOG_FILENAME);
-        //debug-wesmar: std::filesystem::path logPath = L"C:\\Temp\\UdpLogger.txt";
-		
+        
         // Initialize logger
         g_serviceLogger = std::make_unique<FileLogger>(logPath.string());
         

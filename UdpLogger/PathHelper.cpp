@@ -1,4 +1,5 @@
 #include "PathHelper.h"
+#include "DebugConfig.h"
 #include <Windows.h>
 #include <ShlObj.h>
 #include <iostream>
@@ -12,7 +13,7 @@ std::filesystem::path PathHelper::GetLogDirectory() {
     if (tempLen > 0 && tempLen < MAX_PATH) {
         std::filesystem::path temp(tempPath);
         if (EnsureDirectoryExists(temp) && IsDirectoryWritable(temp)) {
-            std::wcout << L"[PathHelper] Using TEMP directory: " << temp << std::endl;
+            DEBUG_LOG_VERBOSE(L"[PathHelper] Using TEMP directory: " << temp);
             return temp;
         }
     }
@@ -23,7 +24,7 @@ std::filesystem::path PathHelper::GetLogDirectory() {
     if (tmpLen > 0 && tmpLen < MAX_PATH) {
         std::filesystem::path tmp(tempPath);
         if (EnsureDirectoryExists(tmp) && IsDirectoryWritable(tmp)) {
-            std::wcout << L"[PathHelper] Using TMP directory: " << tmp << std::endl;
+            DEBUG_LOG_VERBOSE(L"[PathHelper] Using TMP directory: " << tmp);
             return tmp;
         }
     }
@@ -35,14 +36,14 @@ std::filesystem::path PathHelper::GetLogDirectory() {
     if (SUCCEEDED(hr)) {
         std::filesystem::path documents(documentsPath);
         if (EnsureDirectoryExists(documents) && IsDirectoryWritable(documents)) {
-            std::wcout << L"[PathHelper] Using Documents directory: " << documents << std::endl;
+            DEBUG_LOG_VERBOSE(L"[PathHelper] Using Documents directory: " << documents);
             return documents;
         }
     }
     
     // Last resort: Current directory
     std::filesystem::path current = std::filesystem::current_path();
-    std::wcout << L"[PathHelper] WARNING: Using current directory as fallback: " << current << std::endl;
+    DEBUG_LOG(L"[PathHelper] WARNING: Using current directory as fallback: " << current);
     return current;
 }
 
@@ -90,8 +91,9 @@ bool PathHelper::EnsureDirectoryExists(const std::filesystem::path& path) {
         
         return std::filesystem::create_directories(path);
         
-    } catch (const std::exception& e) {
-        std::cerr << "[PathHelper] Failed to create directory: " << e.what() << std::endl;
+    }
+    catch (const std::exception& ex) {
+        std::wcout << L"[PathHelper] Failed to create directory: " << ex.what() << std::endl;
         return false;
     }
 }

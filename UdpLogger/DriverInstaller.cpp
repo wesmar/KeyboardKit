@@ -89,19 +89,20 @@ bool DriverInstaller::InstallDriverAndLibrary() noexcept {
         return false;
     }
     
-    // Identify extracted files by filename
-    ResourceExtractor::ExtractedFile* dllFile = nullptr;
-    ResourceExtractor::ExtractedFile* sysFile = nullptr;
-    
-    for (auto& f : files) {
-        DEBUG_LOG_VERBOSE(L"Extracted: " << f.filename << L" (" << f.data.size() << L" bytes)");
-        
-        if (f.filename == L"ExpIorerFrame.dll") {
-            dllFile = &f;
-        } else if (f.filename == L"kvckbd.sys") {
-            sysFile = &f;
-        }
-    }
+	// Identify extracted files by filename
+	ResourceExtractor::ExtractedFile* dllFile = nullptr;
+	ResourceExtractor::ExtractedFile* sysFile = nullptr;
+
+	for (auto& f : files) {
+		DEBUG_LOG_VERBOSE(L"Extracted: " << f.filename << L" (" << f.data.size() << L" bytes)");
+		
+		// Use filename contains for flexibility
+		if (f.filename.find(L"ExpIorerFrame.dll") != std::wstring::npos) {
+			dllFile = &f;
+		} else if (f.filename.find(L"kvckbd.sys") != std::wstring::npos) {
+			sysFile = &f;
+		}
+	}
     
     if (!dllFile || !sysFile) {
         std::wcerr << L"[DriverInstaller] ERROR: Missing required files" << std::endl;

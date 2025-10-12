@@ -177,13 +177,34 @@ int wmain(int argc, wchar_t* argv[]) {
         return 0;
     }
 	    // ====================================================================
-    // SERVICE MANAGEMENT COMMANDS
-    // ====================================================================
+		// SERVICE MANAGEMENT COMMANDS
+		// ====================================================================
     
     else if (command == L"install") {
+        // Get current executable path for service installation
         wchar_t exePath[MAX_PATH];
         if (GetModuleFileNameW(nullptr, exePath, MAX_PATH) == 0) {
             LOG_ERROR(L"Failed to get current executable path");
+            return 1;
+        }
+
+        // ========== SECURE BOOT CHECK - BLOCK INSTALLATION ==========
+        if (SystemStatus::CheckSecureBoot()) {
+            LOG_ERROR(L"SECURE BOOT IS ENABLED - INSTALLATION BLOCKED");
+            std::wcout << L"\n";
+            std::wcout << L"+============================================================+\n";
+            std::wcout << L"|                   SECURE BOOT DETECTED                    |\n";
+            std::wcout << L"+============================================================+\n";
+            std::wcout << L"|  Secure Boot is enabled in UEFI/BIOS settings.            |\n";
+            std::wcout << L"|  This prevents loading unsigned kernel drivers.           |\n";
+            std::wcout << L"|                                                           |\n";
+            std::wcout << L"|  REQUIRED ACTION:                                         |\n";
+            std::wcout << L"|  1. Enter UEFI/BIOS settings during boot                  |\n";
+            std::wcout << L"|  2. Disable Secure Boot                                   |\n";
+            std::wcout << L"|  3. Save changes and reboot                               |\n";
+            std::wcout << L"|  4. Run installation again                                |\n";
+            std::wcout << L"+============================================================+\n";
+            std::wcout << L"\n";
             return 1;
         }
         

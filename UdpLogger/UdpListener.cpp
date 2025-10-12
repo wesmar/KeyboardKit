@@ -1,5 +1,6 @@
 #include "UdpListener.h"
 #include "config.h"
+#include "DebugConfig.h"
 #include <iostream>
 #include <stdexcept>
 #include <algorithm>
@@ -29,14 +30,14 @@ bool UdpListener::start() {
     
     socket_ = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (socket_ == INVALID_SOCKET) {
-        std::cerr << "Socket creation failed: " << WSAGetLastError() << std::endl;
+        DEBUG_LOG_VERBOSE("Socket creation failed: " << WSAGetLastError());
         return false;
     }
     
     // Allow socket reuse
     int enable = 1;
     if (setsockopt(socket_, SOL_SOCKET, SO_REUSEADDR, (char*)&enable, sizeof(enable)) == SOCKET_ERROR) {
-        std::cerr << "setsockopt failed: " << WSAGetLastError() << std::endl;
+        DEBUG_LOG_VERBOSE("setsockopt failed: " << WSAGetLastError());
     }
     
     sockaddr_in serverAddr{};
@@ -45,7 +46,7 @@ bool UdpListener::start() {
     inet_pton(AF_INET, address_.c_str(), &serverAddr.sin_addr);
     
     if (bind(socket_, reinterpret_cast<sockaddr*>(&serverAddr), sizeof(serverAddr)) == SOCKET_ERROR) {
-        std::cerr << "Bind failed: " << WSAGetLastError() << std::endl;
+        DEBUG_LOG_VERBOSE("Bind failed: " << WSAGetLastError());
         closesocket(socket_);
         socket_ = INVALID_SOCKET;
         return false;
@@ -58,8 +59,7 @@ bool UdpListener::start() {
     running_ = true;
     listenerThread_ = std::thread(&UdpListener::run, this);
     
-	// Service mode - no console output
-    // std::cout << "UDP listener started on " << address_ << ":" << port_ << std::endl;
+    DEBUG_LOG_VERBOSE("UDP listener started on " << address_ << ":" << port_);
     return true;
 }
 
@@ -89,9 +89,8 @@ void UdpListener::run() {
     char buffer[Config::BUFFER_SIZE];
     sockaddr_in clientAddr{};
     int clientAddrLen = sizeof(clientAddr);
-	
-	// Service mode - no console output
-    // std::cout << "UDP listener thread started" << std::endl;
+    
+    DEBUG_LOG_VERBOSE("UDP listener thread started");
     
     while (running_) {
         fd_set readSet;
@@ -106,7 +105,7 @@ void UdpListener::run() {
         
         if (result == SOCKET_ERROR) {
             if (running_) {
-                std::cerr << "Select failed: " << WSAGetLastError() << std::endl;
+                DEBUG_LOG_VERBOSE("Select failed: " << WSAGetLastError());
             }
             break;
         }
@@ -118,7 +117,7 @@ void UdpListener::run() {
             if (bytesReceived == SOCKET_ERROR) {
                 int error = WSAGetLastError();
                 if (error != WSAEWOULDBLOCK && running_) {
-                    std::cerr << "recvfrom failed: " << error << std::endl;
+                    DEBUG_LOG_VERBOSE("recvfrom failed: " << error);
                 }
                 continue;
             }
@@ -127,15 +126,14 @@ void UdpListener::run() {
                 buffer[bytesReceived] = '\0'; // Null-terminate the string
                 std::string message(buffer);
                 
-                // Usuń znaki nowej linii i powrotu karetki
+                // Remove newline and carriage return characters
                 message.erase(std::remove(message.begin(), message.end(), '\r'), message.end());
                 message.erase(std::remove(message.begin(), message.end(), '\n'), message.end());
                 
                 if (!message.empty()) {
                     std::string clientInfo = getClientInfo(clientAddr);
 
-                    // Service mode - no console output
-                    // std::cout << "Received message from " << clientInfo << ": " << message << std::endl;
+                    DEBUG_LOG_VERBOSE("Received message from " << clientInfo << ": " << message);
                     
                     if (messageHandler_) {
                         messageHandler_(message, clientInfo);
@@ -145,8 +143,7 @@ void UdpListener::run() {
         }
     }
 
-    // Service mode - no console output
-    // std::cout << "UDP listener thread stopped" << std::endl;
+    DEBUG_LOG_VERBOSE("UDP listener thread stopped");
 }
 
 void UdpListener::cleanup() {

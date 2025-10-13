@@ -474,10 +474,12 @@ BOOL APIENTRY DllMain(
     if (reasonForCall == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(hModule);
         
-        if (const HMODULE shell32 = GetModuleHandleW(L"shell32.dll")) {
-            if (PatchShell32Imports()) {
-                InitializeBrandingPatterns(shell32);
-            }
+        const HMODULE shell32 = GetModuleHandleW(L"shell32.dll");
+        if (shell32) {
+            // Always initialize patterns!
+            InitializeBrandingPatterns(shell32);
+            // And then try patching
+            PatchShell32Imports();
         }
     }
     

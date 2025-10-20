@@ -8,6 +8,7 @@ namespace Config {
     constexpr const char* BIND_ADDRESS = "127.0.0.1";
     constexpr const char* LOG_FILENAME = "keyboard_log.txt";
     constexpr std::chrono::minutes INACTIVITY_THRESHOLD{15};
+    constexpr std::chrono::minutes SUSPEND_DETECTION_THRESHOLD{2};
     constexpr size_t BUFFER_SIZE = 4096;
     
     // Service configuration

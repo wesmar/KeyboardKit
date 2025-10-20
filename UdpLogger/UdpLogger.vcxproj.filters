@@ -84,7 +84,7 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="ICON\kvc.ico">
+    <Image Include="ICON\UdpLogger.ico">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>

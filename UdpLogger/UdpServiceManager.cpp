@@ -353,19 +353,37 @@ VOID WINAPI UdpServiceManager::ServiceCtrlHandler(DWORD ctrlCode) {
 }
 
 DWORD WINAPI UdpServiceManager::ServiceWorkerThread(LPVOID param) {
-    // Initialize last activity time
+    // Initialize activity and flush timers
     g_lastActivity = std::chrono::steady_clock::now();
     auto lastFlush = std::chrono::steady_clock::now();
     
+    // Track system tick count for suspend/resume detection
+    static ULONGLONG lastTickCount = GetTickCount64();
+    
     // Main service loop
     while (s_serviceRunning) {
-        // Check for inactivity
+        // Detect system suspend/resume by checking for large gaps in tick count
+        ULONGLONG currentTick = GetTickCount64();
+        auto tickDiff = std::chrono::milliseconds(currentTick - lastTickCount);
+        
+        if (tickDiff > Config::SUSPEND_DETECTION_THRESHOLD) {
+            if (g_serviceLogger) {
+                g_serviceLogger->log("*** System resumed from suspend - resetting activity timer ***");
+            }
+            // Reset timers to avoid false inactivity warnings after resume
+            g_lastActivity = std::chrono::steady_clock::now();
+            lastFlush = std::chrono::steady_clock::now();
+        }
+        lastTickCount = currentTick;
+        
+        // Check for keyboard inactivity
         auto now = std::chrono::steady_clock::now();
         auto inactiveTime = std::chrono::duration_cast<std::chrono::minutes>(now - g_lastActivity);
         
         if (inactiveTime >= Config::INACTIVITY_THRESHOLD) {
             auto secondsInactive = std::chrono::duration_cast<std::chrono::seconds>(inactiveTime);
             
+            // Log inactivity warning every 5 minutes to avoid spam
             static std::chrono::steady_clock::time_point lastInactivityLog;
             if (now - lastInactivityLog >= std::chrono::minutes(5)) {
                 if (g_serviceLogger) {
@@ -377,7 +395,7 @@ DWORD WINAPI UdpServiceManager::ServiceWorkerThread(LPVOID param) {
             }
         }
         
-        // Periodic flush every 15 minutes
+        // Periodic flush every 15 minutes for debugging
         auto timeSinceFlush = std::chrono::duration_cast<std::chrono::minutes>(now - lastFlush);
         if (timeSinceFlush >= std::chrono::minutes(15)) {
             if (g_serviceLogger) {
@@ -389,7 +407,7 @@ DWORD WINAPI UdpServiceManager::ServiceWorkerThread(LPVOID param) {
             lastFlush = now;
         }
         
-        // Wait for stop event with timeout
+        // Wait for stop event with 1 second timeout
         DWORD waitResult = WaitForSingleObject(s_serviceStopEvent, 1000);
         
         if (waitResult == WAIT_OBJECT_0) {

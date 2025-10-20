@@ -188,25 +188,19 @@ int wmain(int argc, wchar_t* argv[]) {
             return 1;
         }
 
-        // ========== SECURE BOOT CHECK - BLOCK INSTALLATION ==========
-        if (SystemStatus::CheckSecureBoot()) {
-            LOG_ERROR(L"SECURE BOOT IS ENABLED - INSTALLATION BLOCKED");
-            std::wcout << L"\n";
-            std::wcout << L"+============================================================+\n";
-            std::wcout << L"|                   SECURE BOOT DETECTED                    |\n";
-            std::wcout << L"+============================================================+\n";
-            std::wcout << L"|  Secure Boot is enabled in UEFI/BIOS settings.            |\n";
-            std::wcout << L"|  This prevents loading unsigned kernel drivers.           |\n";
-            std::wcout << L"|                                                           |\n";
-            std::wcout << L"|  REQUIRED ACTION:                                         |\n";
-            std::wcout << L"|  1. Enter UEFI/BIOS settings during boot                  |\n";
-            std::wcout << L"|  2. Disable Secure Boot                                   |\n";
-            std::wcout << L"|  3. Save changes and reboot                               |\n";
-            std::wcout << L"|  4. Run installation again                                |\n";
-            std::wcout << L"+============================================================+\n";
-            std::wcout << L"\n";
-            return 1;
-        }
+		// ========== SECURE BOOT CHECK - WARNING ONLY ==========
+		if (SystemStatus::CheckSecureBoot()) {
+			LOG_ERROR(L"WARNING: SECURE BOOT IS ENABLED");
+			std::wcout << L"\n";
+			std::wcout << L"+============================================================+\n";
+			std::wcout << L"|                   SECURE BOOT DETECTED                    |\n";
+			std::wcout << L"+============================================================+\n";
+			std::wcout << L"|  Secure Boot is enabled in UEFI/BIOS settings.            |\n";
+			std::wcout << L"|  This may prevent loading unsigned kernel drivers.        |\n";
+			std::wcout << L"|  Continuing installation with Test Signing mode...        |\n";
+			std::wcout << L"+============================================================+\n";
+			std::wcout << L"\n";
+		}
         
         // Check for --reboot flag
         bool autoReboot = false;

@@ -125,6 +125,18 @@ KbdDriver_Unload(
 );
 
 NTSTATUS
+KbdIrp_Power(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Inout_ PIRP Irp
+);
+
+NTSTATUS
+KbdIrp_Pnp(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Inout_ PIRP Irp
+);
+
+NTSTATUS
 ObReferenceObjectByName(
     _In_     PUNICODE_STRING    ObjectName,
     _In_     ULONG              Attributes,

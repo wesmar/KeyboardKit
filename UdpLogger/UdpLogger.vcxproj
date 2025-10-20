@@ -124,7 +124,7 @@
     <ResourceCompile Include="UdpLogger.rc" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="ICON\kvc.ico" />
+    <Image Include="ICON\UdpLogger.ico" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

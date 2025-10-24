@@ -37,6 +37,7 @@
     <IncludePath>$(IncludePath);$(WDKContentRoot)Include\$(TargetOS)\km;$(WDKContentRoot)Include\shared;$(WindowsSdkDir)Include\$(WindowsTargetPlatformVersion)\um;$(WindowsSdkDir)Include\$(WindowsTargetPlatformVersion)\shared</IncludePath>
     <LibraryPath>$(LibraryPath);$(WDKContentRoot)lib\$(TargetOS)\km\$(TargetArch)</LibraryPath>
     <IntDir>x64\Release\obj\</IntDir>
+    <Inf2CatUseLocalTime>true</Inf2CatUseLocalTime>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <DriverSign>

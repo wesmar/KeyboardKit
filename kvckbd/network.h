@@ -1,16 +1,7 @@
 /*++
-
-Module Name:
-    network.h
-
-Abstract:
-    Winsock Kernel (WSK) interface declarations. Provides a simplified
-    interface for network communication in kernel mode, specifically
-    UDP socket operations for transmitting keyboard data.
-
-Environment:
-    Kernel mode only.
-
+Module Name: network.h
+Abstract: WSK interface declarations for kernel mode network communication
+Environment: Kernel mode only.
 --*/
 
 #pragma once
@@ -18,19 +9,14 @@ Environment:
 #include "driver.h"
 #include <wsk.h>
 
-//
 // Type Definitions
-//
 #define SOCKET ULONG_PTR
 
-//
-// Global Socket Handle
-//
+// Global Socket Handle (now protected by spinlock)
 extern SOCKET ClientSocket;
+extern KSPIN_LOCK g_SocketLock;
 
-//
 // WSK Socket Flags
-//
 #ifndef WSK_INVALID_SOCKET
     #define WSK_INVALID_SOCKET          ((SOCKET)(~0))
 #endif
@@ -43,9 +29,7 @@ extern SOCKET ClientSocket;
     #define WSK_FLAG_STREAM_SOCKET      0x00000008
 #endif
 
-//
 // WSK Initialization Data
-//
 typedef struct _WSKDATA
 {
     UINT16  HighestVersion;
@@ -53,9 +37,7 @@ typedef struct _WSKDATA
     
 } WSKDATA, *PWSKDATA;
 
-//
 // WSK Overlapped Structure (for asynchronous operations)
-//
 typedef struct _WSKOVERLAPPED
 {
     ULONG_PTR   Internal;
@@ -73,37 +55,14 @@ typedef struct _WSKOVERLAPPED
     
 } WSKOVERLAPPED, *PWSKOVERLAPPED;
 
-//
 // WSK Completion Routine Type
-//
 typedef VOID (*LPWSKOVERLAPPED_COMPLETION_ROUTINE)(
     _In_ NTSTATUS       Status,
     _In_ ULONG_PTR      BytesTransferred,
     _In_ WSKOVERLAPPED* Overlapped
 );
 
-//
 // Network Client Functions
-//
-
-/*++
-
-Routine: NetClient_Initialize
-
-Description:
-    Initializes a WSK UDP client socket and configures it to send data
-    to the specified remote host and port.
-
-Arguments:
-    NodeName        - Remote host name or IP address (e.g., L"192.168.0.2")
-    ServiceName     - Remote port number (e.g., L"8765")
-    AddressFamily   - Address family (AF_INET for IPv4)
-    SocketType      - Socket type (SOCK_DGRAM for UDP)
-
-Return Value:
-    STATUS_SUCCESS on success, appropriate NTSTATUS error code otherwise.
-
---*/
 NTSTATUS
 NetClient_Initialize(
     _In_opt_ LPCWSTR        NodeName,
@@ -112,30 +71,12 @@ NetClient_Initialize(
     _In_     USHORT         SocketType
 );
 
-/*++
-
-Routine: NetClient_Cleanup
-
-Description:
-    Cleans up WSK client resources, closes the socket, and frees
-    all allocated memory.
-
-Arguments:
-    None.
-
-Return Value:
-    None.
-
---*/
 VOID 
 NetClient_Cleanup(
     VOID
 );
 
-//
 // WSK Core Functions
-//
-
 VOID WSKAPI 
 WSKSetLastError(
     _In_ NTSTATUS Status
@@ -170,10 +111,7 @@ WSKGetOverlappedResult(
     _In_     BOOLEAN        Wait
 );
 
-//
 // WSK Address Resolution Functions
-//
-
 NTSTATUS WSKAPI 
 WSKGetAddrInfo(
     _In_opt_ LPCWSTR                        NodeName,
@@ -218,10 +156,7 @@ WSKStringToAddress(
     _Inout_ UINT32*     AddressLength
 );
 
-//
 // WSK Socket Operations
-//
-
 NTSTATUS WSKAPI 
 WSKSocket(
     _Out_ SOCKET*               Socket,
@@ -267,10 +202,7 @@ WSKGetSocketOpt(
     _Inout_ SIZE_T*     OutputSize
 );
 
-//
 // WSK Network Operations
-//
-
 NTSTATUS WSKAPI 
 WSKBind(
     _In_ SOCKET     Socket,
@@ -307,10 +239,7 @@ WSKDisconnect(
     _In_ ULONG  Flags
 );
 
-//
 // WSK Data Transfer Functions
-//
-
 NTSTATUS WSKAPI 
 WSKSend(
     _In_     SOCKET         Socket,

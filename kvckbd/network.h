@@ -1,289 +1,38 @@
 /*++
 Module Name: network.h
-Abstract: WSK interface declarations for kernel mode network communication
+Abstract: WSK interface declarations.
 Environment: Kernel mode only.
 --*/
 
 #pragma once
-
 #include "driver.h"
 #include <wsk.h>
 
-// Type Definitions
 #define SOCKET ULONG_PTR
-
-// Global Socket Handle (now protected by spinlock)
 extern SOCKET ClientSocket;
 extern KSPIN_LOCK g_SocketLock;
 
-// WSK Socket Flags
 #ifndef WSK_INVALID_SOCKET
-    #define WSK_INVALID_SOCKET          ((SOCKET)(~0))
+    #define WSK_INVALID_SOCKET ((SOCKET)(~0))
 #endif
 
-#ifndef WSK_FLAG_INVALID_SOCKET
-    #define WSK_FLAG_INVALID_SOCKET     0xFFFFFFFF
-#endif
+typedef struct _WSKDATA { UINT16 HighestVersion; UINT16 LowestVersion; } WSKDATA, *PWSKDATA;
+typedef struct _WSKOVERLAPPED { ULONG_PTR Internal; ULONG_PTR InternalHigh; union { struct { ULONG Offset; ULONG OffsetHigh; } DUMMYSTRUCTNAME; PVOID Pointer; } DUMMYUNIONNAME; KEVENT Event; } WSKOVERLAPPED, *PWSKOVERLAPPED;
+typedef VOID (*LPWSKOVERLAPPED_COMPLETION_ROUTINE)(_In_ NTSTATUS Status, _In_ ULONG_PTR BytesTransferred, _In_ WSKOVERLAPPED* Overlapped);
 
-#ifndef WSK_FLAG_STREAM_SOCKET
-    #define WSK_FLAG_STREAM_SOCKET      0x00000008
-#endif
+NTSTATUS NetClient_Initialize(_In_opt_ LPCWSTR NodeName, _In_opt_ LPCWSTR ServiceName, _In_ ADDRESS_FAMILY AddressFamily, _In_ USHORT SocketType);
+VOID NetClient_Cleanup(VOID);
+VOID NetClient_FullCleanup(VOID); // <--- To jest nowe, ważne dla driver.c
 
-// WSK Initialization Data
-typedef struct _WSKDATA
-{
-    UINT16  HighestVersion;
-    UINT16  LowestVersion;
-    
-} WSKDATA, *PWSKDATA;
-
-// WSK Overlapped Structure (for asynchronous operations)
-typedef struct _WSKOVERLAPPED
-{
-    ULONG_PTR   Internal;
-    ULONG_PTR   InternalHigh;
-    
-    union {
-        struct {
-            ULONG Offset;
-            ULONG OffsetHigh;
-        } DUMMYSTRUCTNAME;
-        PVOID Pointer;
-    } DUMMYUNIONNAME;
-    
-    KEVENT      Event;
-    
-} WSKOVERLAPPED, *PWSKOVERLAPPED;
-
-// WSK Completion Routine Type
-typedef VOID (*LPWSKOVERLAPPED_COMPLETION_ROUTINE)(
-    _In_ NTSTATUS       Status,
-    _In_ ULONG_PTR      BytesTransferred,
-    _In_ WSKOVERLAPPED* Overlapped
-);
-
-// Network Client Functions
-NTSTATUS
-NetClient_Initialize(
-    _In_opt_ LPCWSTR        NodeName,
-    _In_opt_ LPCWSTR        ServiceName,
-    _In_     ADDRESS_FAMILY AddressFamily,
-    _In_     USHORT         SocketType
-);
-
-VOID 
-NetClient_Cleanup(
-    VOID
-);
-
-// WSK Core Functions
-VOID WSKAPI 
-WSKSetLastError(
-    _In_ NTSTATUS Status
-);
-
-NTSTATUS WSKAPI 
-WSKGetLastError(
-    VOID
-);
-
-NTSTATUS WSKAPI 
-WSKStartup(
-    _In_  UINT16    Version,
-    _Out_ WSKDATA*  WSKData
-);
-
-VOID WSKAPI 
-WSKCleanup(
-    VOID
-);
-
-VOID WSKAPI 
-WSKCreateEvent(
-    _Out_ KEVENT* Event
-);
-
-NTSTATUS WSKAPI 
-WSKGetOverlappedResult(
-    _In_     SOCKET         Socket,
-    _In_     WSKOVERLAPPED* Overlapped,
-    _Out_opt_ SIZE_T*       TransferBytes,
-    _In_     BOOLEAN        Wait
-);
-
-// WSK Address Resolution Functions
-NTSTATUS WSKAPI 
-WSKGetAddrInfo(
-    _In_opt_ LPCWSTR                        NodeName,
-    _In_opt_ LPCWSTR                        ServiceName,
-    _In_     UINT32                         Namespace,
-    _In_opt_ GUID*                          Provider,
-    _In_opt_ PADDRINFOEXW                   Hints,
-    _Outptr_result_maybenull_ PADDRINFOEXW* Result,
-    _In_opt_ UINT32                         TimeoutMilliseconds,
-    _In_opt_ WSKOVERLAPPED*                 Overlapped,
-    _In_opt_ LPWSKOVERLAPPED_COMPLETION_ROUTINE CompletionRoutine
-);
-
-VOID WSKAPI 
-WSKFreeAddrInfo(
-    _In_ PADDRINFOEXW Data
-);
-
-NTSTATUS WSKAPI 
-WSKGetNameInfo(
-    _In_  const SOCKADDR*   Address,
-    _In_  ULONG             AddressLength,
-    _Out_writes_opt_(NodeNameSize) LPWSTR NodeName,
-    _In_  ULONG             NodeNameSize,
-    _Out_writes_opt_(ServiceNameSize) LPWSTR ServiceName,
-    _In_  ULONG             ServiceNameSize,
-    _In_  ULONG             Flags
-);
-
-NTSTATUS WSKAPI 
-WSKAddressToString(
-    _In_reads_bytes_(AddressLength) SOCKADDR* SockAddress,
-    _In_    UINT32  AddressLength,
-    _Out_writes_to_(*AddressStringLength, *AddressStringLength) LPWSTR AddressString,
-    _Inout_ UINT32* AddressStringLength
-);
-
-NTSTATUS WSKAPI 
-WSKStringToAddress(
-    _In_    PCWSTR      AddressString,
-    _Inout_ SOCKADDR*   SockAddress,
-    _Inout_ UINT32*     AddressLength
-);
-
-// WSK Socket Operations
-NTSTATUS WSKAPI 
-WSKSocket(
-    _Out_ SOCKET*               Socket,
-    _In_  ADDRESS_FAMILY        AddressFamily,
-    _In_  USHORT                SocketType,
-    _In_  ULONG                 Protocol,
-    _In_opt_ PSECURITY_DESCRIPTOR SecurityDescriptor
-);
-
-NTSTATUS WSKAPI 
-WSKCloseSocket(
-    _In_ SOCKET Socket
-);
-
-NTSTATUS WSKAPI 
-WSKIoctl(
-    _In_  SOCKET        Socket,
-    _In_  ULONG         ControlCode,
-    _In_reads_bytes_opt_(InputSize) PVOID InputBuffer,
-    _In_  SIZE_T        InputSize,
-    _Out_writes_bytes_opt_(OutputSize) PVOID OutputBuffer,
-    _In_  SIZE_T        OutputSize,
-    _Out_opt_ SIZE_T*   OutputSizeReturned,
-    _In_opt_  WSKOVERLAPPED* Overlapped,
-    _In_opt_  LPWSKOVERLAPPED_COMPLETION_ROUTINE CompletionRoutine
-);
-
-NTSTATUS WSKAPI 
-WSKSetSocketOpt(
-    _In_ SOCKET         Socket,
-    _In_ ULONG          OptionLevel,
-    _In_ ULONG          OptionName,
-    _In_reads_bytes_(InputSize) PVOID InputBuffer,
-    _In_ SIZE_T         InputSize
-);
-
-NTSTATUS WSKAPI 
-WSKGetSocketOpt(
-    _In_    SOCKET      Socket,
-    _In_    ULONG       OptionLevel,
-    _In_    ULONG       OptionName,
-    _Out_writes_bytes_(*OutputSize) PVOID OutputBuffer,
-    _Inout_ SIZE_T*     OutputSize
-);
-
-// WSK Network Operations
-NTSTATUS WSKAPI 
-WSKBind(
-    _In_ SOCKET     Socket,
-    _In_ PSOCKADDR  LocalAddress,
-    _In_ SIZE_T     LocalAddressLength
-);
-
-NTSTATUS WSKAPI 
-WSKAccpet(
-    _In_  SOCKET        Socket,
-    _Out_ SOCKET*       SocketClient,
-    _Out_opt_ PSOCKADDR LocalAddress,
-    _In_  SIZE_T        LocalAddressLength,
-    _Out_opt_ PSOCKADDR RemoteAddress,
-    _In_  SIZE_T        RemoteAddressLength
-);
-
-NTSTATUS WSKAPI 
-WSKListen(
-    _In_ SOCKET Socket,
-    _In_ INT    BackLog
-);
-
-NTSTATUS WSKAPI 
-WSKConnect(
-    _In_ SOCKET     Socket,
-    _In_ PSOCKADDR  RemoteAddress,
-    _In_ SIZE_T     RemoteAddressLength
-);
-
-NTSTATUS WSKAPI 
-WSKDisconnect(
-    _In_ SOCKET Socket,
-    _In_ ULONG  Flags
-);
-
-// WSK Data Transfer Functions
-NTSTATUS WSKAPI 
-WSKSend(
-    _In_     SOCKET         Socket,
-    _In_     PVOID          Buffer,
-    _In_     SIZE_T         BufferLength,
-    _Out_opt_ SIZE_T*       NumberOfBytesSent,
-    _In_     ULONG          Flags,
-    _In_opt_ WSKOVERLAPPED* Overlapped,
-    _In_opt_ LPWSKOVERLAPPED_COMPLETION_ROUTINE CompletionRoutine
-);
-
-NTSTATUS WSKAPI 
-WSKSendTo(
-    _In_      SOCKET        Socket,
-    _In_      PVOID         Buffer,
-    _In_      SIZE_T        BufferLength,
-    _Out_opt_ SIZE_T*       NumberOfBytesSent,
-    _Reserved_ ULONG        Flags,
-    _In_opt_  PSOCKADDR     RemoteAddress,
-    _In_      SIZE_T        RemoteAddressLength,
-    _In_opt_  WSKOVERLAPPED* Overlapped,
-    _In_opt_  LPWSKOVERLAPPED_COMPLETION_ROUTINE CompletionRoutine
-);
-
-NTSTATUS WSKAPI 
-WSKReceive(
-    _In_     SOCKET         Socket,
-    _In_     PVOID          Buffer,
-    _In_     SIZE_T         BufferLength,
-    _Out_opt_ SIZE_T*       NumberOfBytesRecvd,
-    _In_     ULONG          Flags,
-    _In_opt_ WSKOVERLAPPED* Overlapped,
-    _In_opt_ LPWSKOVERLAPPED_COMPLETION_ROUTINE CompletionRoutine
-);
-
-NTSTATUS WSKAPI 
-WSKReceiveFrom(
-    _In_      SOCKET        Socket,
-    _In_      PVOID         Buffer,
-    _In_      SIZE_T        BufferLength,
-    _Out_opt_ SIZE_T*       NumberOfBytesRecvd,
-    _Reserved_ ULONG        Flags,
-    _Out_opt_ PSOCKADDR     RemoteAddress,
-    _In_      SIZE_T        RemoteAddressLength,
-    _In_opt_  WSKOVERLAPPED* Overlapped,
-    _In_opt_  LPWSKOVERLAPPED_COMPLETION_ROUTINE CompletionRoutine
-);
+// WSK Core Wrappers
+VOID WSKAPI WSKSetLastError(_In_ NTSTATUS Status);
+NTSTATUS WSKAPI WSKGetLastError(VOID);
+NTSTATUS WSKAPI WSKStartup(_In_ UINT16 Version, _Out_ WSKDATA* WSKData);
+VOID WSKAPI WSKCleanup(VOID);
+NTSTATUS WSKAPI WSKGetAddrInfo(_In_opt_ LPCWSTR NodeName, _In_opt_ LPCWSTR ServiceName, _In_ UINT32 Namespace, _In_opt_ GUID* Provider, _In_opt_ PADDRINFOEXW Hints, _Outptr_result_maybenull_ PADDRINFOEXW* Result, _In_opt_ UINT32 TimeoutMilliseconds, _In_opt_ WSKOVERLAPPED* Overlapped, _In_opt_ LPWSKOVERLAPPED_COMPLETION_ROUTINE CompletionRoutine);
+VOID WSKAPI WSKFreeAddrInfo(_In_ PADDRINFOEXW Data);
+NTSTATUS WSKAPI WSKGetNameInfo(_In_ const SOCKADDR* Address, _In_ ULONG AddressLength, _Out_writes_opt_(NodeNameSize) LPWSTR NodeName, _In_ ULONG NodeNameSize, _Out_writes_opt_(ServiceNameSize) LPWSTR ServiceName, _In_ ULONG ServiceNameSize, _In_ ULONG Flags);
+NTSTATUS WSKAPI WSKSocket(_Out_ SOCKET* Socket, _In_ ADDRESS_FAMILY AddressFamily, _In_ USHORT SocketType, _In_ ULONG Protocol, _In_opt_ PSECURITY_DESCRIPTOR SecurityDescriptor);
+NTSTATUS WSKAPI WSKCloseSocket(_In_ SOCKET Socket);
+NTSTATUS WSKAPI WSKIoctl(_In_ SOCKET Socket, _In_ ULONG ControlCode, _In_reads_bytes_opt_(InputSize) PVOID InputBuffer, _In_ SIZE_T InputSize, _Out_writes_bytes_opt_(OutputSize) PVOID OutputBuffer, _In_ SIZE_T OutputSize, _Out_opt_ SIZE_T* OutputSizeReturned, _In_opt_ WSKOVERLAPPED* Overlapped, _In_opt_ LPWSKOVERLAPPED_COMPLETION_ROUTINE CompletionRoutine);
+NTSTATUS WSKAPI WSKSendTo(_In_ SOCKET Socket, _In_ PVOID Buffer, _In_ SIZE_T BufferLength, _Out_opt_ SIZE_T* NumberOfBytesSent, _Reserved_ ULONG Flags, _In_opt_ PSOCKADDR RemoteAddress, _In_ SIZE_T RemoteAddressLength, _In_opt_ WSKOVERLAPPED* Overlapped, _In_opt_ LPWSKOVERLAPPED_COMPLETION_ROUTINE CompletionRoutine);

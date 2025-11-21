@@ -1,18 +1,19 @@
 ;
-; kvckbd.inf
+; kvckbd.inf - Keyboard Filter Driver (KMDF non-PnP)
 ;
 
 [Version]
 Signature   = "$WINDOWS NT$"
-Class       = System ; TODO: specify appropriate Class
-ClassGuid   = {4d36e97d-e325-11ce-bfc1-08002be10318} ; TODO: specify appropriate ClassGuid
+Class       = System
+ClassGuid   = {4d36e97d-e325-11ce-bfc1-08002be10318}
 Provider    = %ManufacturerName%
 CatalogFile = kvckbd.cat
-DriverVer 	= 10/24/2025,1.0.0.0
+DriverVer   = 10/27/2025,1.0.0.3
 PnpLockdown = 1
 
 [DestinationDirs]
 DefaultDestDir = 13
+; 13 = %DriverStore% (newer location)
 
 [SourceDisksNames]
 1 = %DiskName%,,,""
@@ -21,14 +22,14 @@ DefaultDestDir = 13
 kvckbd.sys = 1,,
 
 ;*****************************************
-; Install Section
+; Installation Sections
 ;*****************************************
 
 [Manufacturer]
-%ManufacturerName% = Standard,NT$ARCH$.10.0...16299 ; %13% support introduced in build 16299
+%ManufacturerName% = Standard,NT$ARCH$.10.0...16299
 
 [Standard.NT$ARCH$.10.0...16299]
-%kvckbd.DeviceDesc% = kvckbd_Device, Root\kvckbd ; TODO: edit hw-id
+%kvckbd.DeviceDesc% = kvckbd_Device, Root\kvckbd
 
 [kvckbd_Device.NT]
 CopyFiles = File_Copy
@@ -36,11 +37,13 @@ CopyFiles = File_Copy
 [File_Copy]
 kvckbd.sys
 
-;-------------- Service installation
-[kvckbd_Device.NT.Services]
-AddService = kvckbd,%SPSVCINST_ASSOCSERVICE%, kvckbd_Service_Inst
+;*****************************************
+; Service Installation
+;*****************************************
 
-; -------------- kvckbd driver install sections
+[kvckbd_Device.NT.Services]
+AddService = kvckbd, %SPSVCINST_ASSOCSERVICE%, kvckbd_Service_Inst
+
 [kvckbd_Service_Inst]
 DisplayName    = %kvckbd.SVCDESC%
 ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
@@ -48,15 +51,23 @@ StartType      = 3               ; SERVICE_DEMAND_START
 ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
 ServiceBinary  = %13%\kvckbd.sys
 
+;*****************************************
+; WDF KMDF Section
+;*****************************************
+
 [kvckbd_Device.NT.Wdf]
 KmdfService = kvckbd, kvckbd_wdfsect
 
 [kvckbd_wdfsect]
 KmdfLibraryVersion = $KMDFVERSION$
 
+;*****************************************
+; Strings Section
+;*****************************************
+
 [Strings]
 SPSVCINST_ASSOCSERVICE = 0x00000002
-ManufacturerName = "<Your manufacturer name>" ;TODO: Replace with your manufacturer name
-DiskName = "kvckbd Installation Disk"
-kvckbd.DeviceDesc = "kvckbd Device"
-kvckbd.SVCDESC = "kvckbd Service"
+ManufacturerName       = "wesmar"
+DiskName               = "kvckbd Installation Disk"
+kvckbd.DeviceDesc      = "kvckbd Keyboard Filter"
+kvckbd.SVCDESC         = "kvckbd Keyboard Filter Service"

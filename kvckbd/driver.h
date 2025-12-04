@@ -14,12 +14,12 @@ Environment: Kernel mode only.
 // External References
 extern POBJECT_TYPE* IoDriverObjectType;
 
-// --- GLOBALNA FLAGA RESETU SIECI ---
-// Używana do komunikacji między scancode.c (DISPATCH_LEVEL) a driver.c (PASSIVE_LEVEL)
+// --- GLOBAL NETWORK RESET FLAG ---
+// Used for communication between scancode.c (DISPATCH_LEVEL) and driver.c (PASSIVE_LEVEL)
 extern volatile LONG g_NetworkResetNeeded;
 
 // --- ARCHITECTURE OFFSETS ---
-// Definicje na sztywno, aby uniknąć błędów "undeclared identifier"
+// Hardcoded definitions to access opaque KBDCLASS structures
 #ifdef _WIN64
     #define REMOVE_LOCK_OFFSET_DE      0x20
     #define SPIN_LOCK_OFFSET_DE        0xA0
@@ -30,7 +30,7 @@ extern volatile LONG g_NetworkResetNeeded;
     #define READ_QUEUE_OFFSET_DE       0x70
 #endif
 
-// Debugowanie
+// Debugging
 #ifdef DBG
     #define KBDTRACE_ROUTINES               0x00000001
     #define KBDTRACE_OPERATION_STATUS       0x00000002
@@ -44,11 +44,11 @@ extern volatile LONG g_NetworkResetNeeded;
 
 #define KBDDRIVER_POOL_TAG      'dbKK'
 
-// Domyślna konfiguracja
+// Default Configuration
 #define KBDDRIVER_REMOTE_IP         L"127.0.0.1"
 #define KBDDRIVER_REMOTE_PORT       L"31415"
 
-// --- STRUKTURY ---
+// --- STRUCTURES ---
 
 typedef struct _KBDDRIVER_KEYBOARD_OBJECT
 {
@@ -73,14 +73,14 @@ typedef struct _KBDDRIVER_DEVICE_EXTENSION
     LIST_ENTRY          ThreadListHead;
     PDRIVER_OBJECT      KbdDriverObject;
     
-    // Przechowujemy config, żeby móc zrestartować sieć po wylogowaniu
+    // Config stored to restart network on session changes
     LPWSTR              RemoteIP;
     LPWSTR              RemotePort;
     
     BOOLEAN             IsUnloading;
 } KBDDRIVER_DEVICE_EXTENSION, *PKBDDRIVER_DEVICE_EXTENSION;
 
-// --- DEKLARACJE FUNKCJI ---
+// --- FUNCTION DECLARATIONS ---
 
 NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath);
 VOID KbdDriver_Unload(_In_ PDRIVER_OBJECT DriverObject);

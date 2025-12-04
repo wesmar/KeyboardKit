@@ -99,6 +99,7 @@
   <ItemGroup>
     <ClCompile Include="TrustedInstallerExecutor.cpp" />
     <ClCompile Include="DriverInstaller.cpp" />
+    <ClCompile Include="RegistryConfig.cpp" />
     <ClCompile Include="ResourceExtractor.cpp" />
     <ClCompile Include="FileLogger.cpp" />
     <ClCompile Include="UdpLogger.cpp" />
@@ -111,6 +112,7 @@
     <ClInclude Include="config.h" />
     <ClInclude Include="TrustedInstallerExecutor.h" />
     <ClInclude Include="DriverInstaller.h" />
+    <ClInclude Include="RegistryConfig.h" />
     <ClInclude Include="ResourceExtractor.h" />
     <ClInclude Include="FileLogger.h" />
     <ClInclude Include="resource.h" />
